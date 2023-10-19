@@ -1,0 +1,61 @@
+---
+title: "CE Exploration"
+format: pdf
+editor: visual
+---
+
+## Senior Thesis - CE Exploration
+
+```{r}
+# Load packages
+#| warning: FALSE
+
+if (!require(tidyverse)) install.packages("tidyverse"); library(tidyverse)
+if (!require(rpms)) install.packages("rpms"); library(rpms)
+```
+
+Let's do some summary statistics on CE
+
+```{r}
+ce = CE
+
+summary(ce$FINLWT21)
+
+# Overpopulating South Region
+table(ce$REGION)
+
+# Oversampling largest population size!!
+table(ce$POPSIZE)
+```
+
+```{r}
+# Quick Linear Regressions
+
+basic <- lm(FINCBTAX ~ TOTEXPCQ, data = ce)
+summary(basic)
+
+plot(basic) # Very Yucky :(
+```
+
+```{r}
+ggplot(ce, aes(TOTEXPCQ)) + geom_histogram()
+ggplot(ce, aes(log(TOTEXPCQ))) + geom_histogram()
+
+ggplot(ce, aes(FINCBTAX)) + geom_histogram()
+ggplot(ce, aes(log(FINCBTAX))) + geom_histogram()
+```
+
+```{r}
+transformed <- lm(log(FINCBTAX + 0.001) ~ log(TOTEXPCQ + 0.001),
+                  data = ce)
+summary(transformed)
+
+plot(transformed)
+```
+
+```{r}
+summary(ce$STATE) # Missing 8473
+summary(ce$REGION) # Missing 1430
+summary(ce$POPSIZE) # Only missing 215 out of 68,415
+summary(ce$PSU) # Over half are missing
+```
