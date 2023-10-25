@@ -12,13 +12,13 @@ editor: visual
 
 if (!require(tidyverse)) install.packages("tidyverse"); library(tidyverse)
 if (!require(rpms)) install.packages("rpms"); library(rpms)
+if (!require(sampling)) install.packages("sampling"); library(sampling)
 ```
 
 Let's do some summary statistics on CE
 
 ```{r}
-ce = CE
-
+ce = CE %>% filter(TOTEXPCQ > 0 & FINCBTAX > 0)
 summary(ce$FINLWT21)
 
 # Overpopulating South Region
@@ -26,6 +26,8 @@ table(ce$REGION)
 
 # Oversampling largest population size!!
 table(ce$POPSIZE)
+
+weird = ce %>% slice_min(FINLWT21, n = 5)
 ```
 
 ```{r}
@@ -35,6 +37,10 @@ basic <- lm(FINCBTAX ~ TOTEXPCQ, data = ce)
 summary(basic)
 
 plot(basic) # Very Yucky :(
+
+ggplot(ce, aes(x = log(TOTEXPCQ), y = FINCBTAX)) +
+  geom_point(alpha = 0.1) + 
+  geom_smooth()
 ```
 
 ```{r}
@@ -59,3 +65,54 @@ summary(ce$REGION) # Missing 1430
 summary(ce$POPSIZE) # Only missing 215 out of 68,415
 summary(ce$PSU) # Over half are missing
 ```
+
+```{r}
+ce_filtered = ce %>%
+  filter(TOTEXPCQ > 0 & FINCBTAX > 0)
+
+ggplot(ce_filtered, aes(log(TOTEXPCQ), log(FINCBTAX))) + # 41524 observations
+  geom_point(alpha = 0.1) + 
+  geom_smooth(method = "lm") + 
+  facet_wrap(vars(EARNTYPE))
+
+table(CE$EARNTYPE)
+
+test = lm(log(FINCBTAX) ~ log(TOTEXPCQ), ce_filtered) # R^2 of 0.2919
+summary(test)
+```
+
+```{r}
+CE %>% summarise_all(~sum(is.na(.)))
+
+ce_test = ce %>%
+  filter(TOTXEST > 0 & SALARYX < 400000) # R^2 is 0.4279 if salary < 200000
+
+test = lm(log(SALARYX) ~ log(TOTXEST), ce_test)
+summary(test) # R^2 of 0.5033
+
+ggplot(ce_test, aes(log(TOTXEST), log(SALARYX))) + # 16801 observations
+  geom_point(alpha = 0.05) + 
+  geom_smooth(method = "lm")
+```
+
+```{r}
+library(corrplot)
+cor_df = ce %>% 
+      select(FINCBTAX, SALARYX,
+             SOCRRX, IRAX, LIQUIDX, STOCKX, STUDNTX,
+             TOTEXPCQ, TOTXEST, EHOUSNGC,
+             HEALTHCQ, FOODCQ, TOBACCCQ, FOOTWRCQ) %>%
+      drop_na()
+
+cor(cor_df)
+
+corrplot(cor(cor_df))
+```
+
+
+
+
+
+
+
+
