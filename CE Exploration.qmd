@@ -18,7 +18,7 @@ if (!require(sampling)) install.packages("sampling"); library(sampling)
 Let's do some summary statistics on CE
 
 ```{r}
-ce = CE %>% filter(TOTEXPCQ > 0 & FINCBTAX > 0)
+ce = CE # %>% filter(TOTEXPCQ > 0 & FINCBTAX > 0)
 summary(ce$FINLWT21)
 
 # Overpopulating South Region
@@ -85,12 +85,12 @@ summary(test)
 CE %>% summarise_all(~sum(is.na(.)))
 
 ce_test = ce %>%
-  filter(TOTXEST > 0 & SALARYX < 400000) # R^2 is 0.4279 if salary < 200000
+  filter(TOTXEST > 0 & SALARYX < 400000 & TOTEXPCQ > 0 & FINCBTAX > 0) # R^2 is 0.4279 if salary < 200000
 
 test = lm(log(SALARYX) ~ log(TOTXEST), ce_test)
 summary(test) # R^2 of 0.5033
 
-ggplot(ce_test, aes(log(TOTXEST), log(SALARYX))) + # 16801 observations
+ggplot(ce_test, aes(log(TOTXEST), log(SALARYX))) + # 17734 observations
   geom_point(alpha = 0.05) + 
   geom_smooth(method = "lm")
 ```
