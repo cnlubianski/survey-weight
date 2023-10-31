@@ -6,9 +6,8 @@ editor: visual
 
 ## Senior Thesis - CE Exploration
 
-```{r}
+```{r, warning= FALSE, message = FALSE}
 # Load packages
-#| warning: FALSE
 
 if (!require(tidyverse)) install.packages("tidyverse"); library(tidyverse)
 if (!require(rpms)) install.packages("rpms"); library(rpms)
@@ -22,7 +21,7 @@ ce = CE # %>% filter(TOTEXPCQ > 0 & FINCBTAX > 0)
 summary(ce$FINLWT21)
 
 # Overpopulating South Region
-table(ce$REGION)
+table(ce_filtered$REGION)
 
 # Oversampling largest population size!!
 table(ce$POPSIZE)
@@ -72,8 +71,8 @@ ce_filtered = ce %>%
 
 ggplot(ce_filtered, aes(log(TOTEXPCQ), log(FINCBTAX))) + # 41524 observations
   geom_point(alpha = 0.1) + 
-  geom_smooth(method = "lm") + 
-  facet_wrap(vars(EARNTYPE))
+  geom_smooth(method = "lm") #+ 
+  #facet_wrap(vars(EARNTYPE))
 
 table(CE$EARNTYPE)
 
@@ -109,10 +108,17 @@ cor(cor_df)
 corrplot(cor(cor_df))
 ```
 
+```{r}
+ggplot(ce_filtered, aes(FINCBTAX, SALARYX)) + 
+  geom_point() + 
+  geom_abline()
+```
 
+correlate weights with y such that more higher salary
 
+filter out top coded
 
-
+bias and mse of betas
 
 
 

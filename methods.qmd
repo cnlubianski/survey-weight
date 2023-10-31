@@ -5,3 +5,12 @@ editor: visual
 ---
 
 ## Methods
+
+Simulation studies are widely used in survey statistics to evaluate the performance of different sampling methods and designs under various scenarios. Testing survey weight diagnostic tests requires simulating data under different conditions continuously. The few simulation studies to test the performance of several diagnostic tests either used purely simulated data or existing survey data then alter the selection probabilities by using the survey data as the population to survey from.
+
+The data generating process for this simulation study will utilize existing survey data from the Bureau of Labor Statistics' Consumer Expenditure Survey public use interview data file. The dataset for 2015 contains consumer unit characteristics, assets, and expenditure data for consumers in the United States collected by the Census Bureau for the Bureau of Labor Statistics by interview and diary surveys. For more information, please visit \[insert citation for <https://www.bls.gov/cex/>\].
+
+For selecting the endogenous and exogenous variables to simulate, choosing intuitive and strong empirical relationships is key for running the survey weight diagnostic tests. WHYY? Many diagnostic tests assume the unweighted exogenous variables $\vec{X}$ are a significant predictor of the endogenous variable $Y$.  
+
+talk about data
+talk about tests themselves
