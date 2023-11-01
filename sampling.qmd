@@ -1,0 +1,102 @@
+---
+title: "Sampling"
+format: pdf
+editor: visual
+---
+
+# Sampling CE
+
+```{r, message = FALSE}
+if (!require(tidyverse)) install.packages("tidyverse"); library(tidyverse)
+if (!require(rpms)) install.packages("rpms"); library(rpms)
+if (!require(sampling)) install.packages("sampling"); library(sampling)
+```
+
+## Filtering & EDA
+
+First, we need to get to our population to sample from by filtering and doing a small exploratory data analysis to justify our selection.
+
+```{r}
+ce = rpms::CE
+
+ce_filtered = ce %>%
+  #filter(SALARYX < 250000 & SALARYX > 0) %>%
+  filter(TOTEXPCQ > 0 & FINCBTAX > 0)
+
+ggplot(ce_filtered, aes(log(TOTEXPCQ), log(FINCBTAX))) + 
+  geom_point(alpha = 0.05) + 
+  geom_smooth(method = "lm")
+
+test = lm(log(FINCBTAX) ~ log(TOTEXPCQ), ce_filtered)
+summary(test)
+```
+
+
+
+## Sampling
+
+Now, we need to start constructing our sampling techniques
+
+### Grouping
+
+Grouping uses stratification by grouping observations by ranges of $Y$ then applying probabilities to groups. Let $\vec{q}$ be the strata $\mathbb{S} * S$
+
+```{r}
+grouping <- function(data, sample_size, strata, strata_prob) {
+  
+}
+
+df = ce_filtered %>%
+  select(FINCBTAX, TOTEXPCQ)
+
+df %>%
+  mutate(group = cut(FINCBTAX, breaks = 5)) %>% 
+  group_by(group) %>% 
+  summarise(mean_group = mean(FINCBTAX),
+            n = n())
+
+help = df %>%
+  mutate(group = cut(FINCBTAX,
+                     breaks = quantile(FINCBTAX, probs = seq(0, 1, 1/4)),
+                     include.lowest = TRUE,
+                     labels = FALSE)) %>% 
+  group_by(group) %>% 
+  summarise(mean_group = mean(FINCBTAX),
+            n = n(),
+            incl_prob = (strata_prob[group] * sample_size) / nrow(df))
+
+strata_prob = c(0.1, 0.15, 0.25, 0.5)
+sample_size = 100
+
+sum(wish$prob)
+
+# The probabilities are not adding to 1
+
+(100 * 0.1 /17000 + 100 * 0.15 / 17000 + 100 * 0.25 / 17000 + 100 * 0.5 / 17000) * 17000
+```
+### Proportional to Size
+
+```{r}
+pik = inclusionprobabilities(ce_filtered$FINCBTAX, 1000)
+sum(pik)
+
+X = cbind(ce_filtered$FINCBTAX, pik)
+
+data("swissmunicipalities") # 2896 observations with 22 variables
+data("belgianmunicipalities") # 589 observations
+
+# explain why inclusion probabilities do not add up to 1
+
+
+# inclusionprobastrata()
+# UPsampford()
+```
+
+### Stratify on Region
+
+```{r}
+pik_region <- inclusionprobastrata(strata = ce_filtered$REGION, nh = c(150, 150, 500, 200))
+```
+
+
+

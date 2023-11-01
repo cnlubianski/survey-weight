@@ -109,9 +109,66 @@ corrplot(cor(cor_df))
 ```
 
 ```{r}
-ggplot(ce_filtered, aes(FINCBTAX, SALARYX)) + 
+ce_select = ce %>%
+  select(FINCBTAX, SALARYX,
+             SOCRRX, IRAX, LIQUIDX, STOCKX, STUDNTX,
+             TOTEXPCQ, TOTXEST, EHOUSNGC,
+             HEALTHCQ, FOODCQ, TOBACCCQ, FOOTWRCQ)
+
+x = log(ce_select$TOTXEST)
+
+ggplot(ce_select, aes(x, log(FINCBTAX))) + 
   geom_point() + 
-  geom_abline()
+  geom_smooth(method = "lm")
+
+ggplot(ce_select, aes(x, log(SALARYX))) + 
+  geom_point() + 
+  geom_smooth(method = "lm")
+
+ggplot(ce_select, aes(x, log(SOCRRX))) + 
+  geom_point() + 
+  geom_smooth(method = "lm")
+
+ggplot(ce_select, aes(x, log(IRAX))) + 
+  geom_point() + 
+  geom_smooth(method = "lm")
+
+ggplot(ce_select, aes(x, log(LIQUIDX))) + 
+  geom_point() + 
+  geom_smooth(method = "lm")
+
+ggplot(ce_select, aes(x, log(STOCKX))) + 
+  geom_point() + 
+  geom_smooth(method = "lm")
+
+ggplot(ce_select, aes(x, log(TOTEXPCQ))) + 
+  geom_point() + 
+  geom_smooth(method = "lm")
+
+ggplot(ce_select, aes(x, log(TOTXEST))) + 
+  geom_point() + 
+  geom_smooth(method = "lm")
+
+ggplot(ce_select, aes(x, log(EHOUSNGC))) + 
+  geom_point() + 
+  geom_smooth(method = "lm")
+
+ggplot(ce_select, aes(x, log(HEALTHCQ))) + 
+  geom_point() + 
+  geom_smooth(method = "lm")
+
+ggplot(ce_select, aes(x, log(FOODCQ))) + 
+  geom_point() + 
+  geom_smooth(method = "lm")
+
+ggplot(ce_select, aes(x, log(TOBACCCQ))) + 
+  geom_point() + 
+  geom_smooth(method = "lm")
+
+ggplot(ce_select, aes(x, log(FOOTWRCQ))) + 
+  geom_point() + 
+  geom_smooth(method = "lm")
+
 ```
 
 correlate weights with y such that more higher salary
