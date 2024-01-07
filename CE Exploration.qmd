@@ -176,6 +176,3 @@ correlate weights with y such that more higher salary
 filter out top coded
 
 bias and mse of betas
-
-
-

@@ -1,6 +1,6 @@
 ---
 title: "Sampling"
-format: pdf
+format: html
 editor: visual
 ---
 
@@ -20,83 +20,130 @@ First, we need to get to our population to sample from by filtering and doing a 
 ce = rpms::CE
 
 ce_filtered = ce %>%
-  #filter(SALARYX < 250000 & SALARYX > 0) %>%
-  filter(TOTEXPCQ > 0 & FINCBTAX > 0)
+  filter(SALARYX < 250000 & SALARYX > 0) %>%
+  filter(TOTEXPCQ > 0 & FINCBTAX > 0 & !is.na(REGION))
 
 ggplot(ce_filtered, aes(log(TOTEXPCQ), log(FINCBTAX))) + 
   geom_point(alpha = 0.05) + 
   geom_smooth(method = "lm")
+ggsave("CE_FINCBTAX_TOTEXPCQ.jpg")
 
 test = lm(log(FINCBTAX) ~ log(TOTEXPCQ), ce_filtered)
 summary(test)
+
+hello = ce_filtered %>%
+  group_by(FINCBTAX) %>%
+  summarize(n = n())
 ```
-
-
 
 ## Sampling
 
 Now, we need to start constructing our sampling techniques
 
-### Grouping
-
-Grouping uses stratification by grouping observations by ranges of $Y$ then applying probabilities to groups. Let $\vec{q}$ be the strata $\mathbb{S} * S$
-
 ```{r}
-grouping <- function(data, sample_size, strata, strata_prob) {
-  
-}
+# Call function to then calculate pik and weights then return sample
+
+
 
 df = ce_filtered %>%
   select(FINCBTAX, TOTEXPCQ)
 
-df %>%
-  mutate(group = cut(FINCBTAX, breaks = 5)) %>% 
-  group_by(group) %>% 
-  summarise(mean_group = mean(FINCBTAX),
-            n = n())
-
-help = df %>%
-  mutate(group = cut(FINCBTAX,
-                     breaks = quantile(FINCBTAX, probs = seq(0, 1, 1/4)),
-                     include.lowest = TRUE,
-                     labels = FALSE)) %>% 
-  group_by(group) %>% 
-  summarise(mean_group = mean(FINCBTAX),
-            n = n(),
-            incl_prob = (strata_prob[group] * sample_size) / nrow(df))
-
-strata_prob = c(0.1, 0.15, 0.25, 0.5)
-sample_size = 100
-
-sum(wish$prob)
-
-# The probabilities are not adding to 1
-
-(100 * 0.1 /17000 + 100 * 0.15 / 17000 + 100 * 0.25 / 17000 + 100 * 0.5 / 17000) * 17000
+sampling <- function() {
+  # UPsampford()
+}
 ```
-### Proportional to Size
+
+
+
+
+
+### Grouping
 
 ```{r}
-pik = inclusionprobabilities(ce_filtered$FINCBTAX, 1000)
-sum(pik)
+# data - numerical vector from which to group and create stratum
+# nh - vector of the number of selected units in each stratum
 
-X = cbind(ce_filtered$FINCBTAX, pik)
+# People might want to do grouping based on multiple factors / nums TO-DO
+# Consider using interaction() for multiple cuts
 
-data("swissmunicipalities") # 2896 observations with 22 variables
-data("belgianmunicipalities") # 589 observations
+# Might be wise to group based on multiple factors since weights will be very large
 
-# explain why inclusion probabilities do not add up to 1
+grouping <- function(data, nh) {
+  N = length(nh)
+  groups = cut(data, breaks = quantile(data, probs = seq(0, 1, 1 / N)),
+                     include.lowest = TRUE,
+                     labels = FALSE)
+  pik = inclusionprobastrata(groups, nh)
+  return(pik)
+}
+
+sample_size = 100
+strata_prob = c(0.1, 0.15, 0.25, 0.5)
+
+df$pik = grouping(data = df$FINCBTAX, nh = sample_size * strata_prob)
+sum(df$pik) # works!
+```
 
 
-# inclusionprobastrata()
-# UPsampford()
+### Probability Proportional to Size (PPS)
+
+With sampling with the inclusion probabilities proportional to size (PPS), an element of randomness is added to the sampling to account for some variability. Since PPS is positive-definite, it is problematic to suggest an additive random noise process $Z_i = Y_i + \varepsilon_i, \forall i$ where $Z_i$ is the observed response variable, $Y_i$ is the signal derived from the dataset, and $\varepsilon$ is the noise term. Without imposing arbitrary distributional characteristics to $\varepsilon$ to ensure $Z_i > 0$ for all $i$, we should consider a multiplicative regression $$Z_i = Y_i * (1 + \varepsilon_i).$$ Let $\varepsilon \overset{iid}{\sim} \mathcal{N}(0, \sigma^2)$. Then $$E(Z) = E(Y * (1 + \varepsilon)) = E(Y + Y \varepsilon) = E(Y) + E(Y \varepsilon) = E(Y) = Y, \text{ by } Y \perp\!\!\!\!\perp \varepsilon.$$
+
+\begin{align*}
+  \text{Var}(Z) &= \text{Var}(Y * (1 + \varepsilon)) \\ 
+  &= \text{Var}(Y) + \text{Var}(Y \varepsilon) + 2 \text{Cov}(Y, Y \varepsilon).
+\end{align*}
+
+\begin{equation*}
+  \text{Cov}(Y, Y \varepsilon) = E(Y^2 \varepsilon) - E(Y)^2 E(\varepsilon) = E(Y^2) E(\varepsilon) = 0
+\end{equation*}
+
+\begin{align*}
+  \text{Var}(Y \epsilon) &= \text{Var}(E(Y \varepsilon \mid Y)) + E(\text{Var}(Y \epsilon \mid Y)) \\
+  &= \text{Var}(Y E(\varepsilon \mid Y)) + E(Y^2 \text{Var}(\varepsilon \mid Y)) \\
+  &= \text{Var}(Y E(\varepsilon)) + E(Y^2 \text{Var}(\varepsilon)) \\
+  &= E(\varepsilon)^2 \text{Var}(Y) + E(Y^2) \text{Var}(\varepsilon) \\
+  &= E(Y^2) \text{Var}(\varepsilon).
+\end{align*}
+
+\begin{align*}
+  \text{Var}(Z) &= \text{Var}(Y) + \text{Var}(Y \varepsilon) + 2 \text{Cov}(Y, Y \varepsilon) \\
+  &= \text{Var}(Y) + E(Y^2) \text{Var}(\varepsilon).
+\end{align*}
+
+For some small Var$(\varepsilon)$, we will not have to worry about an extremely low case of $Z = 0$ for some $i$ which ensures variation onto $Y$ and positive $Z$.
+
+```{r}
+pps <- function(data, n, noise_sd) {
+  noise = rnorm(length(data), 0, noise_sd)
+  data_noisy = data * (1 + noise)
+  pik = inclusionprobabilities(data_noisy, n)
+  return(pik)
+}
+
+#pps(ce_filtered$FINCBTAX, 1000, noise_sd = 0.05)
 ```
 
 ### Stratify on Region
 
 ```{r}
-pik_region <- inclusionprobastrata(strata = ce_filtered$REGION, nh = c(150, 150, 500, 200))
+region_strata <- function(data, nh) {
+  pik = inclusionprobastrata(as.numeric(data), nh)
+  return(pik)
+}
+
+strata_prop = c(150, 150, 500, 200)
+#region_strata(data = ce_filtered$REGION, nh = strata_prop)
 ```
 
 
+### Control
 
+```{r}
+srs <- function(n, N) {
+  pik = rep(n / N, N)
+  return(pik)
+}
+
+#srs(10, 100)
+```
