@@ -6,7 +6,7 @@ editor: visual
 
 # Sampling CE
 
-```{r, message = FALSE}
+```{r, message = FALSE, warning = FALSE}
 if (!require(tidyverse)) install.packages("tidyverse"); library(tidyverse)
 if (!require(rpms)) install.packages("rpms"); library(rpms)
 if (!require(sampling)) install.packages("sampling"); library(sampling)
@@ -17,23 +17,16 @@ if (!require(sampling)) install.packages("sampling"); library(sampling)
 First, we need to get to our population to sample from by filtering and doing a small exploratory data analysis to justify our selection.
 
 ```{r}
-ce = rpms::CE
-
-ce_filtered = ce %>%
+ce = rpms::CE %>%
   filter(SALARYX < 250000 & SALARYX > 0) %>%
   filter(TOTEXPCQ > 0 & FINCBTAX > 0 & !is.na(REGION))
 
-ggplot(ce_filtered, aes(log(TOTEXPCQ), log(FINCBTAX))) + 
+ggplot(ce, aes(log(TOTEXPCQ), log(FINCBTAX))) + 
   geom_point(alpha = 0.05) + 
   geom_smooth(method = "lm")
-ggsave("CE_FINCBTAX_TOTEXPCQ.jpg")
 
-test = lm(log(FINCBTAX) ~ log(TOTEXPCQ), ce_filtered)
+test = lm(log(FINCBTAX) ~ log(TOTEXPCQ), ce)
 summary(test)
-
-hello = ce_filtered %>%
-  group_by(FINCBTAX) %>%
-  summarize(n = n())
 ```
 
 ## Sampling
@@ -41,16 +34,56 @@ hello = ce_filtered %>%
 Now, we need to start constructing our sampling techniques
 
 ```{r}
-# Call function to then calculate pik and weights then return sample
+# I want to call a single sampling function then choose which method
+# Returning, I want the sampled dataframe with weights
 
-
-
-df = ce_filtered %>%
-  select(FINCBTAX, TOTEXPCQ)
-
-sampling <- function() {
-  # UPsampford()
+sampling <- function(dataset, sample_size, method, variable = NULL, nh = NULL, noise_sd = NULL) {
+  # Check if mandatory parameters are correct
+  stopifnot(is.numeric(sample_size)) 
+  stopifnot(is.character(method) & method %in% c("grouping", "pps", "region_strata", "srs"))
+  stopifnot(is.data.frame(dataset))
+  
+  # Extract column vector
+  data = NULL
+  if (variable %in% names(dataset)) {
+    data = dataset[[variable]]
+  } else {
+    if (method != "srs") { # SRS is the only method that does not need a variable
+      stopifnot(is.character(variable))
+      stop(paste("The dataset does not contain a column named", variable))
+    }
+  }
+  
+  # Calulate inclusion probabilities
+  pik = NULL
+  if (method == "grouping") {
+    pik = grouping(data = data, nh = nh)
+  } 
+  if (method == "pps") {
+    pik = pps(data = data, n = sample_size, noise_sd = noise_sd)
+  } 
+  if (method == "region_strata") {
+    pik = region_strata(data = data, nh = nh)
+  } 
+  if (method == "srs") {
+    pik = srs(n = sample_size, N = length(dataset))
+  }
+  
+  # Add weights to dataset for later
+  dataset$wts = pik^(-1)
+  
+  # Sample vector using pik
+  # Why does UPsampford take so long to sample?
+  sample_vector = UPsampford(pik, max_iter = sample_size)
+  
+  # Return data
+  return(sample_data)
 }
+
+# fix bug
+y = sampling(dataset = ce, sample_size = 150, method = "grouping", nh = c(10, 15, 25, 50), variable = "FINCBTAX", noise_sd = 0.05)
+
+x = ce[y,]
 ```
 
 
@@ -69,7 +102,7 @@ sampling <- function() {
 # Might be wise to group based on multiple factors since weights will be very large
 
 grouping <- function(data, nh) {
-  N = length(nh)
+  N = length(nh) # Number of stratum
   groups = cut(data, breaks = quantile(data, probs = seq(0, 1, 1 / N)),
                      include.lowest = TRUE,
                      labels = FALSE)
@@ -80,8 +113,7 @@ grouping <- function(data, nh) {
 sample_size = 100
 strata_prob = c(0.1, 0.15, 0.25, 0.5)
 
-df$pik = grouping(data = df$FINCBTAX, nh = sample_size * strata_prob)
-sum(df$pik) # works!
+ce$pik = grouping(data = ce$FINCBTAX, nh = sample_size * strata_prob)
 ```
 
 
@@ -115,13 +147,15 @@ For some small Var$(\varepsilon)$, we will not have to worry about an extremely 
 
 ```{r}
 pps <- function(data, n, noise_sd) {
+  stopifnot(is.numeric(noise_sd))
+  
   noise = rnorm(length(data), 0, noise_sd)
   data_noisy = data * (1 + noise)
   pik = inclusionprobabilities(data_noisy, n)
   return(pik)
 }
 
-#pps(ce_filtered$FINCBTAX, 1000, noise_sd = 0.05)
+#pps(ce$FINCBTAX, 1000, noise_sd = 0.05)
 ```
 
 ### Stratify on Region
@@ -133,7 +167,7 @@ region_strata <- function(data, nh) {
 }
 
 strata_prop = c(150, 150, 500, 200)
-#region_strata(data = ce_filtered$REGION, nh = strata_prop)
+#region_strata(data = ce$REGION, nh = strata_prop)
 ```
 
 
