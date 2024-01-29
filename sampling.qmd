@@ -86,10 +86,6 @@ y = sampling(dataset = ce, sample_size = 150, method = "grouping", nh = c(10, 15
 x = ce[y,]
 ```
 
-
-
-
-
 ### Grouping
 
 ```{r}
@@ -116,20 +112,22 @@ strata_prob = c(0.1, 0.15, 0.25, 0.5)
 ce$pik = grouping(data = ce$FINCBTAX, nh = sample_size * strata_prob)
 ```
 
-
 ### Probability Proportional to Size (PPS)
 
 With sampling with the inclusion probabilities proportional to size (PPS), an element of randomness is added to the sampling to account for some variability. Since PPS is positive-definite, it is problematic to suggest an additive random noise process $Z_i = Y_i + \varepsilon_i, \forall i$ where $Z_i$ is the observed response variable, $Y_i$ is the signal derived from the dataset, and $\varepsilon$ is the noise term. Without imposing arbitrary distributional characteristics to $\varepsilon$ to ensure $Z_i > 0$ for all $i$, we should consider a multiplicative regression $$Z_i = Y_i * (1 + \varepsilon_i).$$ Let $\varepsilon \overset{iid}{\sim} \mathcal{N}(0, \sigma^2)$. Then $$E(Z) = E(Y * (1 + \varepsilon)) = E(Y + Y \varepsilon) = E(Y) + E(Y \varepsilon) = E(Y) = Y, \text{ by } Y \perp\!\!\!\!\perp \varepsilon.$$
 
+```{=tex}
 \begin{align*}
   \text{Var}(Z) &= \text{Var}(Y * (1 + \varepsilon)) \\ 
   &= \text{Var}(Y) + \text{Var}(Y \varepsilon) + 2 \text{Cov}(Y, Y \varepsilon).
 \end{align*}
-
+```
+```{=tex}
 \begin{equation*}
   \text{Cov}(Y, Y \varepsilon) = E(Y^2 \varepsilon) - E(Y)^2 E(\varepsilon) = E(Y^2) E(\varepsilon) = 0
 \end{equation*}
-
+```
+```{=tex}
 \begin{align*}
   \text{Var}(Y \epsilon) &= \text{Var}(E(Y \varepsilon \mid Y)) + E(\text{Var}(Y \epsilon \mid Y)) \\
   &= \text{Var}(Y E(\varepsilon \mid Y)) + E(Y^2 \text{Var}(\varepsilon \mid Y)) \\
@@ -137,12 +135,13 @@ With sampling with the inclusion probabilities proportional to size (PPS), an el
   &= E(\varepsilon)^2 \text{Var}(Y) + E(Y^2) \text{Var}(\varepsilon) \\
   &= E(Y^2) \text{Var}(\varepsilon).
 \end{align*}
-
+```
+```{=tex}
 \begin{align*}
   \text{Var}(Z) &= \text{Var}(Y) + \text{Var}(Y \varepsilon) + 2 \text{Cov}(Y, Y \varepsilon) \\
   &= \text{Var}(Y) + E(Y^2) \text{Var}(\varepsilon).
 \end{align*}
-
+```
 For some small Var$(\varepsilon)$, we will not have to worry about an extremely low case of $Z = 0$ for some $i$ which ensures variation onto $Y$ and positive $Z$.
 
 ```{r}
@@ -169,7 +168,6 @@ region_strata <- function(data, nh) {
 strata_prop = c(150, 150, 500, 200)
 #region_strata(data = ce$REGION, nh = strata_prop)
 ```
-
 
 ### Control
 
