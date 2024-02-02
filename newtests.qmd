@@ -1,0 +1,65 @@
+---
+title: "newtests"
+format: html
+editor: visual
+---
+
+# Proposed Tests
+
+In addition to the listed survey weight diagnostic tests, I propose additional tests to determine survey weights' necessity in regression analysis.
+
+```{r, message = FALSE, warning = FALSE}
+if (!require(tidyverse)) install.packages("tidyverse"); library(tidyverse)
+if (!require(rpms)) install.packages("rpms"); library(rpms)
+if (!require(sampling)) install.packages("sampling"); library(sampling)
+if (!require(survey)) install.packages("survey"); library(survey)
+```
+
+### Data Simulation - Study #1
+
+```{r}
+N <- 3000
+n <- c(100, 200)
+sigma <- c(0.1, 0.2)
+a <- c(0, 0.2, 0.4, 0.6)
+delta <- c(1, 1.5)
+
+cases <- expand_grid(n, sigma, a, delta)
+
+x <- runif(N, 0, 1)
+u <- runif(N, 0, 1)
+epsilon <- rnorm(N, 0, sigma[1])
+
+y <- 1 + x + epsilon
+w <- a[1] * y + 0.3 * x + delta[1] * u
+
+data = data.frame(y, x, w, epsilon, id = 1:N)
+
+samp = data[UPsampford(inclusionprobabilities(w, n[1]), max_iter = n[1]),]
+
+vector = 1:100
+
+vector[UPsampford(inclusionprobabilities(w, n[1]), max_iter = n[1])]
+```
+
+## Permutation Test
+
+```{r}
+B = 10000
+stat_stor = rep(NA, B)
+
+for (b in 1:B) {
+  shuffled_w = sample(data$w)
+  b_data = data.frame(y = data$y, x = data$x, w = shuffled_w, id = nrow(data))
+  
+  # Unweighted Regression
+  unweighted = lm(y ~ x, data = b_data)
+  
+  
+}
+
+unweighted = lm(y ~ x, data = data)
+unweighted$coefficients[2]
+
+```
+
