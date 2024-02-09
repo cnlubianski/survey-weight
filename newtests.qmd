@@ -18,48 +18,141 @@ if (!require(survey)) install.packages("survey"); library(survey)
 ### Data Simulation - Study #1
 
 ```{r}
-N <- 3000
-n <- c(100, 200)
-sigma <- c(0.1, 0.2)
-a <- c(0, 0.2, 0.4, 0.6)
-delta <- c(1, 1.5)
-
-cases <- expand_grid(n, sigma, a, delta)
-
-x <- runif(N, 0, 1)
-u <- runif(N, 0, 1)
-epsilon <- rnorm(N, 0, sigma[1])
-
-y <- 1 + x + epsilon
-w <- a[1] * y + 0.3 * x + delta[1] * u
-
-data = data.frame(y, x, w, epsilon, id = 1:N)
-
-samp = data[UPsampford(inclusionprobabilities(w, n[1]), max_iter = n[1]),]
-
-vector = 1:100
-
-vector[UPsampford(inclusionprobabilities(w, n[1]), max_iter = n[1])]
-```
-
-## Permutation Test
-
-```{r}
-B = 10000
-stat_stor = rep(NA, B)
-
-for (b in 1:B) {
-  shuffled_w = sample(data$w)
-  b_data = data.frame(y = data$y, x = data$x, w = shuffled_w, id = nrow(data))
+generate_data_study1 = function(N, sigma, alpha, delta) {
+  X <- runif(N, 0, 1)
+  u <- runif(N, 0, 1)
+  epsilon <- rnorm(N, 0, sigma)
   
-  # Unweighted Regression
-  unweighted = lm(y ~ x, data = b_data)
+  Y <- 1 + X + epsilon
+  w <- alpha * Y + 0.3 * X + delta[1] * u
   
-  
+  data = data.frame(y = Y, x = X, w, id = 1:N)
+  return(data)
 }
 
-unweighted = lm(y ~ x, data = data)
-unweighted$coefficients[2]
+generate_sample_study1 = function(data, w, n) {
+  samp = data[1:N * UPsampford(inclusionprobabilities(w, n), max_iter = n),]
+  return(samp)
+}
+
+N <- 3000
+n <- c(75, 125)
+sigma <- c(0.1, 0.2)
+alpha <- c(0, 0.2, 0.4, 0.6)
+delta <- c(1, 1.5)
+
+cases <- expand_grid(N, n, sigma, alpha, delta)
+```
+
+
+## Permutation Test - DC Version
+
+```{r}
+weight_perm_test <- function(y, x, w, B) {
+  stat_stor = rep(NA, B)
+  data = data.frame(x = x, y = y, w = w)
+  # Permutating
+  for (b in 1:B) {
+    shuffled_w = sample(w)
+    b_data = data.frame(y = y, x = x, w = shuffled_w, id = length(w))
+    
+    # Unweighted Regression
+    unweighted = lm(y ~ x, data = b_data)
+    beta_u = unweighted$coefficients[2] # faster to manually calculate beta_1
+    #beta_u = sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x))^2)
+    
+    # Weighted Regression
+    design = svydesign(id = ~1, weights = ~w, fpc = ~rep(N, nrow(b_data)),
+                       data = b_data)
+    weighted = svyglm(y ~ x, design = design)
+    beta_w = weighted$coefficients[2]
+    
+    stat_stor[b] = beta_w - beta_u
+  }
+  
+  # Estimating test statistic
+  act_betau = lm(y ~ x, data = data)$coefficients[2]
+  
+  act_design = svydesign(id = ~1, weights = ~w, fpc = ~rep(N, nrow(data)),
+                       data = data)
+  act_betaw = svyglm(y ~ x, design = act_design)$coefficients[2]
+  est_stat = act_betaw - act_betau
+  
+  # Calculating p-value
+  dist = ecdf(stat_stor)
+  p = dist(est_stat)
+  pvalue = 2 * min(p, 1 - p)
+  
+  # return list for distribution and p-value
+  return(pvalue)
+}
+
+pop = generate_data_study1(N = cases$N[32],
+                                         sigma = cases$sigma[32],
+                                         alpha = cases$alpha[32],
+                                         delta = cases$delta[32])
+
+actual = weight_perm_test(y = pop$y, x = pop$x, w = pop$w, B = 1000)
+
+samp = generate_sample_study1(data = pop, w = pop$w, n = cases$n[32])
+samp_test =  weight_perm_test(y = samp$y, x = samp$x, w = samp$w, B = 1000)
+```
+
+### Simulation
+
+```{r, warning = FALSE}
+# investigate warning
+set.seed(51483464)
+B = 100
+
+# data storage set-up
+columns = c("case", "iteration", "pvalue", "reject")
+results = data.frame(matrix(nrow = 0, ncol = length(columns)))
+colnames(results) = columns
+
+# Iterate through cases, then through simulations
+for (case in 1:nrow(cases)) {
+  # Create case storage data frame for the entire case
+  case_storage = data.frame(iteration = seq_len(B),
+                       pvalue = rep(NA, B),
+                       reject = rep(NA, B))
+  
+  # Run B simulations for a case
+  for (b in 1:B) {
+    sample_data = generate_data_study1(N = cases$N[case], # should be pop_data
+                                       sigma = cases$sigma[case],
+                                       alpha = cases$alpha[case],
+                                       delta = cases$delta[case])
+    #sample_data = generate_sample_study1(data = pop_data, w = pop_data$w, n = cases$n[case])
+    # something wrong with too large n
+    case_storage$iteration[b] = b
+    case_storage$pvalue[b] = weight_perm_test(y = sample_data$y, x = sample_data$x,
+                               w = sample_data$w, B = 1000)
+    case_storage$reject[b] = as.numeric(case_storage$pvalue[b] <= 0.05)
+  }
+  results = rbind(results, cbind(case = rep(case, B), case_storage))
+}
+
+write.csv(results, "perm_results.csv")
+results = read.csv("perm_results.csv")
+
+aggre_results = results |>
+  mutate(case = as.factor(case)) |>
+  #select(case, reject) |>
+  group_by(case) |>
+  summarise(rejection_percent = mean(reject))
+
+aggre_results
+```
+
+
+
+# Diagnostic Tests
+
+## Weight Association Test
+
+```{r}
 
 ```
+
 

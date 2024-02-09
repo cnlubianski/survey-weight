@@ -10,6 +10,7 @@ editor: visual
 if (!require(tidyverse)) install.packages("tidyverse"); library(tidyverse)
 if (!require(rpms)) install.packages("rpms"); library(rpms)
 if (!require(sampling)) install.packages("sampling"); library(sampling)
+if (!require(survey)) install.packages("survey"); library(survey)
 ```
 
 ## Filtering & EDA
@@ -17,6 +18,9 @@ if (!require(sampling)) install.packages("sampling"); library(sampling)
 First, we need to get to our population to sample from by filtering and doing a small exploratory data analysis to justify our selection.
 
 ```{r}
+# Switch to api in survey package
+
+
 ce = rpms::CE %>%
   filter(SALARYX < 250000 & SALARYX > 0) %>%
   filter(TOTEXPCQ > 0 & FINCBTAX > 0 & !is.na(REGION))
@@ -27,6 +31,13 @@ ggplot(ce, aes(log(TOTEXPCQ), log(FINCBTAX))) +
 
 test = lm(log(FINCBTAX) ~ log(TOTEXPCQ), ce)
 summary(test)
+```
+
+```{r}
+api = data(api)
+
+ggplot(apipop, aes(api00, mobility)) + 
+  geom_point()
 ```
 
 ## Sampling
