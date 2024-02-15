@@ -31,17 +31,131 @@ generate_data_study1 = function(N, sigma, alpha, delta) {
 }
 
 generate_sample_study1 = function(data, w, n) {
-  samp = data[1:N * UPsampford(inclusionprobabilities(w, n), max_iter = n),]
+  pik = inclusionprobabilities(w, n)
+  choosen = UPsampford(pik, max_iter = n)
+  samp = data[1:N * choosen,]
   return(samp)
 }
 
 N <- 3000
-n <- c(75, 125)
+n <- c(100, 200)
 sigma <- c(0.1, 0.2)
 alpha <- c(0, 0.2, 0.4, 0.6)
 delta <- c(1, 1.5)
 
 cases <- expand_grid(N, n, sigma, alpha, delta)
+```
+
+
+```{r}
+library(microbenchmark)
+
+generate_sample_tille = function(data, w, n) {
+  pik = inclusionprobabilities(w, n)
+  choosen = UPtille(pik)
+  samp = data[1:N * choosen,]
+  return(samp)
+}
+
+generate_sample_sampford = function(data, w, n) {
+  pik = inclusionprobabilities(w, n)
+  choosen = UPsampford(pik)
+  samp = data[1:N * choosen,]
+  return(samp)
+}
+
+generate_sample_brewer = function(data, w, n) {
+  pik = inclusionprobabilities(w, n)
+  choosen = UPbrewer(pik)
+  samp = data[1:N * choosen,]
+  return(samp)
+}
+
+generate_sample_midzuno = function(data, w, n) {
+  pik = inclusionprobabilities(w, n)
+  choosen = UPmidzuno(pik)
+  samp = data[1:N * choosen,]
+  return(samp)
+}
+
+set.seed(51483464)
+
+pop = generate_data_study1(N = cases$N[32], sigma = cases$sigma[32],
+                           alpha = cases$alpha[32], delta = cases$delta[32])
+
+time_trials = microbenchmark("UPtille" = {b <- generate_sample_tille(data = pop,
+                                                             w = pop$w,
+                                                             n = cases$n[32])},
+               #"UPsampford" = {b <- generate_sample_study1(data = pop,
+                #                                             w = pop$w,
+                 #                                            n = cases$n[32])},
+               #"UPsampford_wo" = {b <- generate_sample_sampford(data = pop,
+                #                                             w = pop$w,
+                 #                                            n = cases$n[32])},
+               "UPsampford_edited" = {b <- generate_sample_adapt_sampford(data = pop,
+                                                             w = pop$w,
+                                                             n = cases$n[32])},
+               "UPbrewer" = {b <- generate_sample_brewer(data = pop,
+                                                             w = pop$w,
+                                                             n = cases$n[32])},
+               "UPmidzuno" = {b <- generate_sample_midzuno(data = pop,
+                                                             w = pop$w,
+                                                             n = cases$n[32])},
+               check = NULL, times = 1000)
+
+print(time_trials)
+
+write.csv(time_trials, "sampling_times.csv")
+
+pik = inclusionprobabilities(pop$w, cases$n[32])
+system.time(UPsampford(pik, max_iter = cases$n[32]))
+system.time(UPsampford(pik))
+system.time(UPtille(pik))
+system.time(UPbrewer(pik))
+system.time(UPmidzuno(pik))
+system.time(adapt_UPsampford(pik))
+```
+
+```{r}
+generate_sample_adapt_sampford = function(data, w, n) {
+  pik = inclusionprobabilities(w, n)
+  choosen = adapt_UPsampford(pik)
+  samp = data[1:N * choosen,]
+  return(samp)
+}
+
+
+
+adapt_UPsampford = function(pik, eps = 1e-06, max_iter = 500) 
+{
+    if (any(is.na(pik))) 
+        stop("there are missing values in the pik vector")
+    n = sum(pik)
+    n = .as_int(n)
+    list = pik > eps & pik < 1 - eps
+    pikb = pik[list]
+    n = sum(pikb)
+    N = length(pikb)
+    s = pik
+    if (N < 1) 
+        stop("the pik vector has all elements outside of the range [eps,1-eps]")
+    else {
+        sb = rep(2, N)
+        y = pikb/(1 - pikb)/sum(pikb/(1 - pikb))
+        step = 0
+        while (sum(sb <= 1) != N & step <= max_iter) {
+            sb = as.vector(rmultinom(1, 1, pikb/sum(pikb)) + 
+                rmultinom(1, .as_int(n - 1), y))
+            step = step + 1
+        }
+        if (sum(sb <= 1) == N) 
+            s[list] = sb
+        #else stop("Too many iterations. The algorithm was stopped.")
+    }
+    s
+}
+
+x = generate_sample_adapt_sampford(data = pop, w = pop$w, n = cases$n[32])
 ```
 
 
@@ -103,7 +217,7 @@ samp_test =  weight_perm_test(y = samp$y, x = samp$x, w = samp$w, B = 1000)
 ```{r, warning = FALSE}
 # investigate warning
 set.seed(51483464)
-B = 100
+B = 1
 
 # data storage set-up
 columns = c("case", "iteration", "pvalue", "reject")
@@ -119,18 +233,20 @@ for (case in 1:nrow(cases)) {
   
   # Run B simulations for a case
   for (b in 1:B) {
-    sample_data = generate_data_study1(N = cases$N[case], # should be pop_data
+    pop_data = generate_data_study1(N = cases$N[case], # should be pop_data
                                        sigma = cases$sigma[case],
                                        alpha = cases$alpha[case],
                                        delta = cases$delta[case])
-    #sample_data = generate_sample_study1(data = pop_data, w = pop_data$w, n = cases$n[case])
+    sample_data = generate_sample_study1.1(data = pop_data, w = pop_data$w, n = cases$n[case])
+    
     # something wrong with too large n
     case_storage$iteration[b] = b
     case_storage$pvalue[b] = weight_perm_test(y = sample_data$y, x = sample_data$x,
-                               w = sample_data$w, B = 1000)
+                               w = sample_data$w, B = 500)
     case_storage$reject[b] = as.numeric(case_storage$pvalue[b] <= 0.05)
   }
   results = rbind(results, cbind(case = rep(case, B), case_storage))
+  print(case)
 }
 
 write.csv(results, "perm_results.csv")

@@ -20,7 +20,7 @@ if (!require(NHANES)) install.packages("NHANES"); library(NHANES)
 ### CE Dataset
 
 ```{r}
-ce = CE # %>% filter(TOTEXPCQ > 0 & FINCBTAX > 0)
+ce = CE  %>% filter(TOTEXPCQ > exp(3.5) & FINCBTAX > 1)
 summary(ce$FINLWT21)
 
 # Overpopulating South Region
@@ -34,7 +34,7 @@ weird = ce %>% slice_min(FINLWT21, n = 5)
 
 ```{r}
 # Quick Linear Regressions
-basic <- lm(FINCBTAX ~ TOTEXPCQ, data = ce)
+basic <- lm(log(FINCBTAX) ~ log(TOTEXPCQ), data = ce)
 summary(basic)
 
 plot(basic) # Very Yucky :(
@@ -135,9 +135,10 @@ ggplot(apipop, aes(api99, api00)) +
   geom_abline(slope = 1, intercept = 0, color = "red")
 
 
-lm1 = lm(api00 ~ api99, data = apipop)
+lm1 = lm(api00 ~ api.stu, data = apipop)
 summary(lm1)
 ```
+
 ```{r}
 table(apipop$cnum) # Good to use strata and cluster from!
 table(apipop$dnum)
