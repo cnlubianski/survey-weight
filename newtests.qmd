@@ -126,7 +126,7 @@ generate_sample_adapt_sampford = function(data, w, n) {
 
 
 
-adapt_UPsampford = function(pik, eps = 1e-06, max_iter = 500) 
+adapt_UPsampford = function(pik, eps = 1e-06) 
 {
     if (any(is.na(pik))) 
         stop("there are missing values in the pik vector")
@@ -262,13 +262,5 @@ aggre_results
 ```
 
 
-
-# Diagnostic Tests
-
-## Weight Association Test
-
-```{r}
-
-```
 
 
