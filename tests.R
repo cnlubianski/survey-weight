@@ -1,19 +1,11 @@
----
-title: "Diagnostic Survey Weight Tests"
-format: html
-editor: visual
----
-
-### Set-up
-
-```{r, message = FALSE, warning = FALSE}
+# Install packages -------------------------------------------------------------
 if (!require(tidyverse)) install.packages("tidyverse"); library(tidyverse)
 if (!require(rpms)) install.packages("rpms"); library(rpms)
 if (!require(sampling)) install.packages("sampling"); library(sampling)
 if (!require(survey)) install.packages("survey"); library(survey)
-```
 
-```{r}
+
+# Sampling Function - Wang et al (2023) Study 1 for testing --------------------
 generate_data_study1 = function(N, sigma, alpha, delta) {
   X <- runif(N, 0, 1)
   u <- runif(N, 0, 1)
@@ -34,6 +26,7 @@ generate_sample_brewer = function(data, w, n, rescale = FALSE) {
   return(samp)
 }
 
+# Set cases and case grid
 N <- 3000
 n <- c(100, 200)
 sigma <- c(0.1, 0.2)
@@ -41,11 +34,8 @@ alpha <- c(0, 0.2, 0.4, 0.6)
 delta <- c(1, 1.5)
 
 cases <- expand_grid(N, n, sigma, delta, alpha)
-```
 
-
-```{r}
-m = 1
+# If we want to sample outside of the function for testing purposes
 pop = generate_data_study1(N = cases$N[m],
                            sigma = cases$sigma[m],
                            alpha = cases$alpha[m],
@@ -55,33 +45,25 @@ pop = generate_data_study1(N = cases$N[m],
 samp = generate_sample_brewer(data = pop,
                               w = pop$w, 
                               n = cases$n[m], #nrow(pop) / 2,
-                              rescale = FALSE) #cases$n[m])
-
-#samp = pop %>%
-#  mutate(w = 1 / inclusionprobabilities(w, nrow(pop) / 2)) %>%
-#  sample_n(size = 1500)
-```
+                              rescale = FALSE)
 
 
-# Difference-in-Coefficients Tests
+# Difference in Coefficients Test ----------------------------------------------
 
-### Hausman-Pfeffermann DC Test (adapted)
+## Hausman-Pfeffermann DC Test =================================================
 
-<!----- Redo the math above to include the revised variance estimator ----> 
-
-```{r}
 # TO-DO: incorporate categorical variables
 HP_DC_test = function(data, y, x, wts) {
-  # Unweighted Regression --------------
+  # Unweighted Regression
   X = cbind(1, x)
   betas_u = solve(t(X) %*% X) %*% t(X) %*% y
   
-  # Weighted Regression ----------------
+  # Weighted Regression
   W =  diag(x = wts, nrow = length(wts), ncol = length(wts))
   betas_w = solve(t(X) %*% W %*% X) %*% t(X) %*% W %*% y
   
-  # Calculate Test Statistic -----------
-
+  # Calculate Test Statistic
+  
   # Calculate sigma^2 estimate from OLS under null
   y_hat = X %*% betas_u
   residuals = y - y_hat
@@ -100,15 +82,15 @@ HP_DC_test = function(data, y, x, wts) {
   return(p_value)
 }
 
-HP_DC_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
-```
+# HP_DC_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
 
 
-# Weight Association Tests
 
-### DuMouchel-Duncan WA Test
 
-```{r}
+# Weight Association Tests -----------------------------------------------------
+
+## DuMouchel-Duncan WA Test ====================================================
+
 DD_WA_test = function(data, y, x, wts) {
   # Create matrices
   X = cbind(1, x)
@@ -134,15 +116,11 @@ DD_WA_test = function(data, y, x, wts) {
   return(p_value)
 }
 
-DD_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
-```
+# DD_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
 
-### Pfeffermann-Sverchkov WA Test 1 - Correlation Testing
+## Pfeffermann-Sverchkov WA Test 1 - Correlation Testing =======================
 
-They propose a simple modification by regressing $W$ on the first two moments and an interaction with $X$: $$E(W \mid \hat{\epsilon}_u) = f(X; \eta) + \sum_{k = 1}^2 \beta^{(k)} \hat{\epsilon}_u^k + \text{diag}(\hat{\epsilon}_u)X \gamma,$$ where $f(X;\eta)$ is a function of $X$ with scalar parameter $\eta$, scalar coefficients $\beta^{(1)}$ and $\beta^{(2)}$, and $\gamma$ is a $p \times 1$ coefficient vector for the interaction between $X$ and $\hat{\epsilon}$. Finally, test the null hypothesis $H_0: \beta^{(1)} = \beta^{(2)} = \gamma = 0$ by an $F$-test.
-
-```{r}
-PS1_WA_test = function(data, y, x, wts) { #TO-DO: Figure out circumstances when p != 0
+PS1_WA_test = function(data, y, x, wts) {
   W = wts
   
   # Estimate residuals with unweighted regression
@@ -173,10 +151,9 @@ PS1_WA_test = function(data, y, x, wts) { #TO-DO: Figure out circumstances when 
   return(p_value)
 }
 
-PS1_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
-```
+# PS1_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
 
-```{r}
+# For quadratic X terms
 PS1q_WA_test = function(data, y, x, wts) { #TO-DO: Figure out circumstances when p != 0
   W = wts
   
@@ -209,16 +186,10 @@ PS1q_WA_test = function(data, y, x, wts) { #TO-DO: Figure out circumstances when
   return(p_value)
 }
 
-PS1q_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
-```
+# PS1q_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
 
+## Pfeffermann-Sverchkov WA Test 2 - Weight Informative ========================
 
-
-### Pfeffermann-Sverchkov WA Test 2 - Weight Informative
-
-Wang \textit{et al.} (2023) critiques the regression model $E(W \mid X, Y)$ since it would only capture a linear relationship between $W$ and $(X,Y)$. Thus, they suggest capturing possible non-linear relationships by considering $$E(W \mid X, Y) = f(X; \eta) + \sum_{k = 1}^2 Y^k \gamma_k,$$ where $f(X; \eta)$ is a function of $X$ with parameter $\eta$, coefficient $\gamma_k$ of $Y^k$. Finally, test the null hypothesis $H_0: \gamma_1 = \gamma_2 = 0$ with an $F$-test to determine whether $W$ and $Y$ are associated conditional on $X$.
-
-```{r}
 PS2_WA_test = function(data, y, x, wts) {
   W = wts
   
@@ -242,10 +213,8 @@ PS2_WA_test = function(data, y, x, wts) {
   return(p_value)
 }
 
-PS2_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
-```
+# PS2_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
 
-```{r}
 PS2q_WA_test = function(data, y, x, wts) {
   W = wts
   
@@ -269,24 +238,19 @@ PS2q_WA_test = function(data, y, x, wts) {
   return(p_value)
 }
 
-PS2q_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
-```
+# PS2q_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
 
+## Wu-Fuller WA Test ===========================================================
 
-### Wu-Fuller WA Test
-
-As another special case of the Hausman (1978) misspecification regression test, Wu \& Fuller (2005) extend Dumouchel \& Duncan (1983) model but change how $X$ is transformed in the regression. Consider the regression $$Y = X \beta + \widetilde{X} \widetilde{\beta} + \widetilde{\varepsilon},$$ where $\widetilde{X} = QX$, $Q = \text{diag}(q_1, q_2, \hdots, q_n)$, and $q_i = w_i \hat{w}^{-1}(x_i)$ where $\hat{w}(x_i)$ is estimated from the regression of $w_i$ on $f(x_i)$. Testing the model with the null hypothesis $H_0: \gamma = 0$ determines the impact of $W$ on $Y$ after removing the information contained in $X$ as $q_i$ are the predictable factors of weight $W_i$ by $X_i$.
-
-```{r}
 WF_WA_test = function(data, y, x, wts) {
   W = wts
-
+  
   # Auxiliary Regression
   X_design = cbind(1, x, x^2)
   etas = solve(t(X_design) %*% X_design) %*% t(X_design) %*% W
   W_hat = X_design %*% etas
   q = W / W_hat
-    
+  
   # Full Regression
   X_tilde = diag(as.vector(q)) %*% x
   XQ_design = cbind(1, x, X_tilde)
@@ -302,22 +266,18 @@ WF_WA_test = function(data, y, x, wts) {
   
   # F-test - Testing whether beta coefficient for X_tilde is stat sig
   F_statistic = ((RSS_reduced - RSS_full) / length(betas_reduced[-1,])) /
-      (RSS_full / (length(y) - length(betas_full)))
+    (RSS_full / (length(y) - length(betas_full)))
   p_value = 1 - pf(F_statistic, df1 = length(betas_reduced[-1,]), df2 = length(y) - length(betas_full))
   return(p_value)
 }
 
-WF_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
-```
+# WF_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
 
 
-# Other
+# Other ------------------------------------------------------------------------
 
-### Pfeffermann-Sverchkov Other Test - Estimating Equations
+## Pfeffermann-Sverchkov Other Test - Estimating Equations =====================
 
-Pfeffermann \& Sverchkov (2003) proposed a test that uses the estimating equations to estimate $\beta$ by an auxiliary regression model for $W$ on some function of $X$ with parameter $\eta$. The unweighted estimating function $$\delta_i(\beta) = X_i (Y_i - X_i^T \beta), i \in S.$$ Define $\hat{W}_i$ as the fitted value of the regression, $q_i = \frac{W_i}{\hat{W}_i}$, and $R(X_i; \beta) = \delta_i(\beta) - q_i \delta_i(\beta)$. Thus, the null hypothesis is $H_0: E(R(X_i; \beta)) = 0$. The sampling weight means $E(R(X_i; \beta))$ can be tested by a Hotelling statistic $$\frac{n - p}{p} \bar{R}_n^{-T} \hat{\Sigma}_{R,n}^{-1} \bar{R}_n,$$ where $\bar{R}_n$ is the sample mean and $\hat{\Sigma}_{R,n}$ is the sample variance matrix of $R(X_i; \hat{\beta}_u)$ with $i \in S$. The statistic then approximately follows an $F$ distribution with ($p, n - p$) degrees of freedom under the null hypothesis. 
-
-```{r}
 PS3_test = function(data, y, x, wts) {
   W = wts
   
@@ -347,13 +307,10 @@ PS3_test = function(data, y, x, wts) {
   return(p_value)
 }
 
-PS3_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
-```
+# PS3_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
 
+## Pfeffermann-Nathan Predictive Power Test ===================================
 
-### Pfeffermann-Nathan Predictive Power Test
-
-```{r}
 # Fix to generalize the parameters x,y,wts from any dataframe
 
 PN_test = function(data, y, x, wts, est_split) {
@@ -373,7 +330,7 @@ PN_test = function(data, y, x, wts, est_split) {
   betas_u = solve(t(X) %*% X) %*% t(X) %*% y_est
   y_val_u = cbind(1, x_val) %*% betas_u
   v_u = y_val - y_val_u
-    
+  
   # Weighted Regression ----------------
   W =  diag(x = wts_est)
   betas_w = solve(t(X) %*% W %*% X) %*% t(X) %*% W %*% y_est
@@ -387,24 +344,23 @@ PN_test = function(data, y, x, wts, est_split) {
   return(p_value)
 }
 
-PN_test(data = samp, y = samp$y, x = samp$x, wts = samp$w, est_split = 0.5)
-```
+# PN_test(data = samp, y = samp$y, x = samp$x, wts = samp$w, est_split = 0.5)
 
 
-### Breidt Likelihood-Ratio Test
 
-```{r}
+## Breidt Likelihood-Ratio Test ================================================
+
 LR_test = function(data, y, x, wts) {
   X = cbind(1, x)
   
   # Define the log-likelihood function
   logLike <- function(params, y, X, wts) {
-  beta <- params[1:ncol(X)]
-  sigma2 <- exp(params[ncol(X)+1])  # we use exp to ensure sigma^2 is positive
-  mu <- X %*% beta
-  n <- length(y)
-  logLik <- -0.5 * log(2 * pi * sigma2) * sum(wts) - 0.5 * sum(wts * (y - mu)^2) / sigma2
-  return(-logLik)  # We negate because optim() minimizes by default
+    beta <- params[1:ncol(X)]
+    sigma2 <- exp(params[ncol(X)+1])  # we use exp to ensure sigma^2 is positive
+    mu <- X %*% beta
+    n <- length(y)
+    logLik <- -0.5 * log(2 * pi * sigma2) * sum(wts) - 0.5 * sum(wts * (y - mu)^2) / sigma2
+    return(-logLik)  # We negate because optim() minimizes by default
   }
   
   initial <- c(rep(0, ncol(X)), log(var(y)))
@@ -440,11 +396,11 @@ LR_test = function(data, y, x, wts) {
   
   # Asymptotic Test Distribution (Using Fisher Information matrix)
   J_u = diag(c(sum(t(X) %*% X / sigma_sq), # with respect to X, not X_i
-           1 / (2 * (sigma_sq)^2)))
+               1 / (2 * (sigma_sq)^2)))
   J_w = diag(c(sum(t(X) %*% diag(wts) %*% X / sigma_sq),
-           sum(wts) / (2 * length(wts) * (sigma_sq)^2)))
+               sum(wts) / (2 * length(wts) * (sigma_sq)^2)))
   K_w = diag(c(sum(t(X) %*% diag(wts^2) %*% X / sigma_sq),
-           sum(wts^2) / (2 * length(wts) * (sigma_sq)^2)))
+               sum(wts^2) / (2 * length(wts) * (sigma_sq)^2)))
   
   Gamma = solve(J_w) %*% K_w %*% solve(J_w) - solve(J_u)
   
@@ -459,16 +415,12 @@ LR_test = function(data, y, x, wts) {
   return(p_value)
 }
 
-LR_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
-```
+# LR_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
+## Confidence Intervals Overlap Test ===========================================
 
-
-### Confidence Intervals
-
-```{r}
 confint_test = function(data, y, x, wts, alpha = 0.05) {
   X = cbind(1, x)
-
+  
   # Unweighted beta CI
   betas_u = solve(t(X) %*% X) %*% t(X) %*% y
   residuals_u = y -  X %*% betas_u
@@ -497,15 +449,10 @@ confint_test = function(data, y, x, wts, alpha = 0.05) {
   return(as.numeric(overlap)) # if overlap, returns 1 so fail to reject the null
 }
 
-confint_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
-```
+# confint_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
 
+# Permutation Proposal Test (TO-DO) --------------------------------------------
 
-
-### Permutation
-
-<!---- TO-DO: Determine how to efficiently calculate permutation statistic ---->
-```{r, include = FALSE, eval = FALSE}
 weight_perm_test <- function(y, x, w, B) {
   stat_stor = rep(NA, B)
   data = data.frame(x = x, y = y, w = w)
@@ -532,7 +479,7 @@ weight_perm_test <- function(y, x, w, B) {
   act_betau = lm(y ~ x, data = data)$coefficients[2]
   
   act_design = svydesign(id = ~1, weights = ~w, fpc = ~rep(N, nrow(data)),
-                       data = data)
+                         data = data)
   act_betaw = svyglm(y ~ x, design = act_design)$coefficients[2]
   est_stat = act_betaw - act_betau
   
@@ -545,9 +492,6 @@ weight_perm_test <- function(y, x, w, B) {
   return(pvalue)
 }
 
-weight_perm_test = function(data, y, x, wts, B) {
-  
-}
 B = 100
 stat_stor = rep(NA, B)
 
@@ -577,7 +521,7 @@ betas_u = solve(t(X) %*% X) %*% t(X) %*% Y
 # Weighted Regression
 W = diag(x = data$w)
 betas_w = solve(t(X) %*% W %*% X) %*% t(X) %*% W %*% Y
-  
+
 est_stat = betas_w[2] - betas_u[2]
 
 # Calculating p-value
@@ -593,81 +537,3 @@ p_value
 
 
 hist(stat_stor)
-```
-
-
-# Simulation 
-
-```{r}
-set.seed(51483464)
-B = 2500
-
-N <- 3000
-n <- c(100, 200)
-sigma <- c(0.1, 0.2)
-alpha <- c(0, 0.2, 0.4, 0.6)
-delta <- c(1, 1.5)
-cases <- expand_grid(N, n, sigma, delta, alpha)
-
-columns = c("case", "iteration", "DD", "PN", "HP", "PS1", "PS1q", "PS2", "PS2q", 
-            "PS3", "WF", "LR", "CI")
-results = data.frame(matrix(nrow = 0, ncol = length(columns)))
-colnames(results) = columns
-
-for (case in 1:nrow(cases)) {
-  DD = PN = HP = PS1 = PS1q = PS2 = PS2q = PS3 = WF = LR = CI = rep(NA, B)
-  case_storage = data.frame(iteration = seq_len(B), DD, PN, HP, PS1, PS1q,
-                            PS2, PS2q, PS3, WF, LR, CI)
-  for (b in 1:B) {
-    pop = generate_data_study1(N = cases$N[case],
-                               sigma = cases$sigma[case],
-                               alpha = cases$alpha[case],
-                               delta = cases$delta[case])
-    samp = generate_sample_brewer(pop, w = pop$w, n = cases$n[case])
-    
-    case_storage$DD[b] = DD_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
-    case_storage$PN[b] = PN_test(data = samp, y = samp$y, x = samp$x, wts = samp$w, est_split = 0.5)
-    case_storage$HP[b] = HP_DC_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
-    case_storage$PS1[b] = PS1_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
-    case_storage$PS1q[b] = PS1q_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
-    case_storage$PS2[b] = PS2_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
-    case_storage$PS2q[b] = PS2q_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
-    case_storage$PS3[b] = PS3_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
-    case_storage$WF[b] = WF_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
-    case_storage$LR[b] = LR_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
-    case_storage$CI[b] = confint_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
-  }
-  
-  results = rbind(results, cbind(case, case_storage))
-  print(case)
-}
-write.csv(results, "results.csv")
-```
-
-```{r}
-results = read.csv("results.csv")
-
-reject = results %>%
-  mutate(HP = case_when(HP <= 0.05 ~ 1, TRUE ~ 0),
-         DD = case_when(DD <= 0.05 ~ 1, TRUE ~ 0),
-         PS1 = case_when(PS1 <= 0.05 ~ 1, TRUE ~ 0),
-         PS1q = case_when(PS1q <= 0.05 ~ 1, TRUE ~ 0),
-         PS2 = case_when(PS2 <= 0.05 ~ 1, TRUE ~ 0),
-         PS2q = case_when(PS2q <= 0.05 ~ 1, TRUE ~ 0),
-         PS3 = case_when(PS3 <= 0.05 ~ 1, TRUE ~ 0),
-         WF = case_when(WF <= 0.05 ~ 1, TRUE ~ 0),
-         CI = case_when(CI <= 0.05 ~ 1, TRUE ~ 0),
-         LR = case_when(LR <= 0.05 ~ 1, TRUE ~ 0),
-         PN = case_when(PN <= 0.05 ~ 1, TRUE ~ 0)) %>%
-  select(-iteration) %>%
-  group_by(case) %>%
-  summarize(across(everything(), mean))
-
-reject_table = cbind(cases, reject) %>% select(-c(N, case))
-reject_table
-
-write.csv(reject_table, "recent_sim1.csv")
-```
-
-
-
