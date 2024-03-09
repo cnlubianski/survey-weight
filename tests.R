@@ -36,6 +36,7 @@ delta <- c(1, 1.5)
 cases <- expand_grid(N, n, sigma, delta, alpha)
 
 # If we want to sample outside of the function for testing purposes
+m = 32
 pop = generate_data_study1(N = cases$N[m],
                            sigma = cases$sigma[m],
                            alpha = cases$alpha[m],
@@ -44,7 +45,7 @@ pop = generate_data_study1(N = cases$N[m],
 # Keeping all units to test out the test code
 samp = generate_sample_brewer(data = pop,
                               w = pop$w, 
-                              n = cases$n[m], #nrow(pop) / 2,
+                              n = cases$n[m],#nrow(pop) / 2, #cases$n[m],
                               rescale = FALSE)
 
 
@@ -423,25 +424,25 @@ confint_test = function(data, y, x, wts, alpha = 0.05) {
   
   # Unweighted beta CI
   betas_u = solve(t(X) %*% X) %*% t(X) %*% y
-  residuals_u = y -  X %*% betas_u
+  residuals_u = y - X %*% betas_u
   MSE_u = sum(residuals_u^2) / (nrow(X) - ncol(X))
-  vcov_matrix = MSE_u * solve(t(X) %*% X)
-  se_u = sqrt(diag(vcov_matrix))
+  vcov_matrix_u = MSE_u * solve(t(X) %*% X)
+  se_u = sqrt(diag(vcov_matrix_u))
   t_value = qt(1 - alpha / 2, df = nrow(X) - ncol(X))
-  
-  CI_u = cbind(betas_u - t_value * se_u, betas_u + t_value * se_u)
+  CI_u = cbind(betas_u - t_value * se_u * sqrt(1 / (length(y) - 1) * var(x)),
+               betas_u + t_value * se_u * sqrt(1 / (length(y) - 1) * var(x)))
   beta_1_u = CI_u[2,]
   
   # Weighted beta CI
   W = diag(wts)
   betas_w = solve(t(X) %*% W %*% X) %*% t(X) %*% W %*% y
-  residuals_w = y -  X %*% betas_w
+  residuals_w = y - X %*% betas_w
   MSE_w = sum(residuals_w^2) / (nrow(X) - ncol(X))
-  vcov_matrix = MSE_w * solve(t(X) %*% X)
-  se_w = sqrt(diag(vcov_matrix))
+  vcov_matrix_w = MSE_w * solve(t(X) %*% X)
+  se_w = sqrt(diag(vcov_matrix_w))
   t_value = qt(1 - alpha / 2, df = nrow(X) - ncol(X))
-  
-  CI_w = cbind(betas_w - t_value * se_w, betas_w + t_value * se_w)
+  CI_w = cbind(betas_w - t_value * se_w * sqrt(1 / (length(y) - 1) * var(x)),
+               betas_w + t_value * se_w * sqrt(1 / (length(y) - 1) * var(x)))
   beta_1_w = CI_w[2,]
   
   # Determine overlap
@@ -449,39 +450,39 @@ confint_test = function(data, y, x, wts, alpha = 0.05) {
   return(as.numeric(overlap)) # if overlap, returns 1 so fail to reject the null
 }
 
-# confint_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
+# confint_test(data = samp, y = samp$y, x = samp$x, wts = samp$w, alpha = 0.10)
 
-# Permutation Proposal Test (TO-DO) --------------------------------------------
 
-weight_perm_test <- function(y, x, w, B) {
+## Permutation Proposal Test (TO-DO) ===========================================
+
+perm_DC_test <- function(data, y, x, wts, B) {
   stat_stor = rep(NA, B)
-  data = data.frame(x = x, y = y, w = w)
+  
   # Permutating
   for (b in 1:B) {
-    shuffled_w = sample(w)
-    b_data = data.frame(y = y, x = x, w = shuffled_w, id = length(w))
+    b_data = mutate(data, w = sample(w))
     
     # Unweighted Regression
-    unweighted = lm(y ~ x, data = b_data)
-    beta_u = unweighted$coefficients[2] # faster to manually calculate beta_1
-    #beta_u = sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x))^2)
+    X = cbind(1, b_data$x)
+    Y = b_data$y
+    betas_u = solve(t(X) %*% X) %*% t(X) %*% Y
     
     # Weighted Regression
-    design = svydesign(id = ~1, weights = ~w, fpc = ~rep(N, nrow(b_data)),
-                       data = b_data)
-    weighted = svyglm(y ~ x, design = design)
-    beta_w = weighted$coefficients[2]
+    W = diag(x = b_data$w)
+    betas_w = solve(t(X) %*% W %*% X) %*% t(X) %*% W %*% Y
     
-    stat_stor[b] = beta_w - beta_u
+    stat_stor[b] = betas_w[2] - betas_u[2]
   }
   
-  # Estimating test statistic
-  act_betau = lm(y ~ x, data = data)$coefficients[2]
+  X = cbind(1, data$x)
+  Y = data$y
+  betas_u = solve(t(X) %*% X) %*% t(X) %*% Y
   
-  act_design = svydesign(id = ~1, weights = ~w, fpc = ~rep(N, nrow(data)),
-                         data = data)
-  act_betaw = svyglm(y ~ x, design = act_design)$coefficients[2]
-  est_stat = act_betaw - act_betau
+  # Weighted Regression
+  W = diag(x = data$w)
+  betas_w = solve(t(X) %*% W %*% X) %*% t(X) %*% W %*% Y
+  
+  est_stat = betas_w[2] - betas_u[2]
   
   # Calculating p-value
   dist = ecdf(stat_stor)
@@ -492,7 +493,11 @@ weight_perm_test <- function(y, x, w, B) {
   return(pvalue)
 }
 
-B = 100
+perm_DC_test(data = samp, y = samp$y, x = samp$x, wts = samp$w, B = 500)
+
+
+
+B = 500
 stat_stor = rep(NA, B)
 
 data = samp
@@ -531,9 +536,107 @@ p_value = 2 * min(p, 1 - p)
 p_value
 
 
+cor(samp$y, samp$w)
+
+
+
+# Difference between conditional expectations
+B = 1000
+hi = rep(NA, B)
+
+for (b in 1:B) {
+  y = samp$y
+  x = samp$x
+  wts = sample(samp$w)
+  
+  model_yx = lm(wts ~ y + x)
+  model_x = lm(wts ~ x)
+  
+  hi[b] = mean(model_yx$fitted.values - model_x$fitted.values)
+}
+
+B = 5000
+bye = rep(NA, B)
+
+for (b in 1:B) {
+  y = samp$y
+  x = samp$x
+  wts = sample(samp$w)
+  X = cbind(1, x)
+  XY = cbind(1, x, y)
+  
+  betas_xy = solve(t(XY) %*% XY) %*% t(XY) %*% wts
+  betas_x = solve(t(X) %*% X) %*% t(X) %*% wts
+  
+  bye[b] = mean(XY %*% betas_xy - X %*% betas_x)
+}
+
+
+
+X = cbind(1, x)
+betas_u = solve(t(X) %*% X) %*% t(X) %*% y
+
+# Weighted Regression
+W =  diag(x = wts, nrow = length(wts), ncol = length(wts))
+betas_w = solve(t(X) %*% W %*% X) %*% t(X) %*% W %*% y
+
+# Calculate Test Statistic
+
+# Calculate sigma^2 estimate from OLS under null
+y_hat = X %*% betas_u
+residuals = y - y_hat
+
+
+summary(model_yx)
+summary(model_x)
+
+
+y = samp$y
+x = samp$x
+wts = samp$w
+
+
+model_yx = lm(wts ~ y + x)
+model_x = lm(wts ~ x)
+
+actual = mean(model_yx$fitted.values - model_x$fitted.values)
+
+ggplot() + #geom_histogram(data = data_frame(val = hi), aes(val)) + 
+  geom_vline(xintercept = actual) + 
+  geom_histogram(data = data_frame(vil = bye), aes(vil))
+
+dist = ecdf(hi)
+p = dist(actual)
+p_value = 2 * min(p, 1 - p)
+p_value
+
+
+die = lm()
+
+
 # hist(stat_stor)
 p_value <- sum(abs(stat_stor) >= abs(est_stat)) / length(stat_stor)
 p_value
 
 
-hist(stat_stor)
+ggplot() + geom_histogram(data = data_frame(val = stat_stor), aes(val)) + 
+  geom_vline(xintercept = est_stat)
+
+X <- runif(N, 0, 1)
+u <- runif(N, 0, 1)
+epsilon <- rnorm(N, 0, sd = sigma[1])
+
+#Y <- 1 + X + epsilon
+Y <- 1 + jitter(X, factor = sd(X)) + epsilon
+w <- alpha[4] * Y + 0.3 * X + delta[2] * u
+data = data.frame(y = Y, x = X, w)
+pop = data
+
+Y <- 1 + jitter(X, factor = sd(X)) + epsilon
+w <- alpha[1] * Y + 0.3 * X + delta[1] * u
+data = data.frame(y = Y, x = X, w)
+pop = data
+
+
+
+

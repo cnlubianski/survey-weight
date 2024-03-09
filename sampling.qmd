@@ -96,7 +96,7 @@ methods <- c("grouping", "pps", "strata")
 cases <- expand_grid(n, methods)
 
 set.seed(51483464)
-B = 3000
+B = 1000
 
 columns = c("case", "iteration", "DD", "PN", "HP", "PS1", "PS1q", "PS2", "PS2q", 
             "PS3", "WF", "LR", "CI")
@@ -160,10 +160,23 @@ test_reject = test_results %>%
          PN = case_when(PN <= 0.05 ~ 1, TRUE ~ 0)) %>%
   select(-iteration) %>%
   group_by(case) %>%
-  summarize(across(everything(), mean))
+  summarize(across(everything(), mean)) %>%
+  mutate(HP = format(round(HP * 100, 1), nsmall = 1),
+         DD = format(round(DD * 100, 1), nsmall = 1),
+         PS1 = format(round(PS1 * 100, 1), nsmall = 1),
+         PS1q = format(round(PS1q * 100, 1), nsmall = 1),
+         PS2 = format(round(PS2 * 100, 1), nsmall = 1),
+         PS2q = format(round(PS2q * 100, 1), nsmall = 1),
+         PS3 = format(round(PS3 * 100, 1), nsmall = 1),
+         WF = format(round(WF * 100, 1), nsmall = 1),
+         CI = format(round(CI * 100, 1), nsmall = 1),
+         LR = format(round(LR * 100, 1), nsmall = 1),
+         PN = format(round(PN * 100, 1), nsmall = 1))
 
 test_reject_table = cbind(cases, test_reject) %>% select(-c(X, case))
 test_reject_table
+
+write.csv(test_reject_table, "ce_reject_table.csv")
 ```
 
 
@@ -260,8 +273,8 @@ region_strata <- function(data, nh) {
   return(pik)
 }
 
-strata_prop = c(150, 150, 500, 200)
-region_strata(data = ce$REGION, nh = strata_prop)
+#strata_prop = c(150, 150, 500, 200)
+#region_strata(data = ce$REGION, nh = strata_prop)
 ```
 
 
