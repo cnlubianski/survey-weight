@@ -36,7 +36,32 @@ generate_data_study2 = function(N, sigma, alpha) {
   return(data)
 }
 
+# Make Study 3 data generation
+generate_data_study3 = function(N, sigma, alpha) {
+  X <- runif(N, 0, 0.5)
+  epsilon <- runif(N, 0, 0.5)
+  
+  X <- runif(N, 0, 1)
+  u <- runif(N, 0, 1)
+  epsilon <- rnorm(N, 0, sd = sigma)
+  
+  Y <- 1 + X + epsilon
+  w <- alpha * (Y - 1.5 * alpha)^2 + 0.3 * X - 0.3 * X^2 + u
+  data = data.frame(y = Y, x = X, w)
+  return(data)
+}
+
 generate_sample_brewer = function(data, w, n, rescale = FALSE) {
+  pik = inclusionprobabilities(w, n)
+  choosen = UPbrewer(pik)
+  samp = data[1:nrow(data) * choosen,] %>%
+    mutate(w = 1 / pik[1:nrow(data) * choosen])
+  if (rescale == TRUE) mutate(samp, w = w / sum(w))
+  return(samp)
+}
+
+# Make Study 3 data sampling via poisson sampling
+generate_sample_poisson = function(data, w, n, rescale = FALSE) {
   pik = inclusionprobabilities(w, n)
   choosen = UPbrewer(pik)
   samp = data[1:nrow(data) * choosen,] %>%
@@ -706,9 +731,11 @@ hist(stat_stor)
 
 # Simulation 
 
+### Study 1
+
 ```{r}
 set.seed(51483464)
-B = 5000
+B = 1000 # 5000 for large study
 
 N <- 3000
 n <- c(100, 200)
@@ -749,13 +776,13 @@ for (case in 1:nrow(cases)) {
   results = rbind(results, cbind(case, case_storage))
   print(case)
 }
-#write.csv(results, "st1_results.csv")
-write.csv(results, "st1_results_large.csv")
+write.csv(results, "st1_results.csv")
+#write.csv(results, "st1_results_large.csv")
 ```
 
 ```{r}
-# results = read.csv("st1_results.csv")
-results = read.csv("st1_results_large.csv")
+ results = read.csv("st1_results.csv")
+#results = read.csv("st1_results_large.csv")
 
 reject = results %>%
   mutate(HP = case_when(HP <= 0.05 ~ 1, TRUE ~ 0),
@@ -787,9 +814,11 @@ reject = results %>%
 reject_table = cbind(cases, reject) %>% select(-c(N, case, X))
 reject_table
 
-# write.csv(reject_table, "recent_sim1.csv")
-write.csv(reject_table, "recent_sim1_large.csv")
+write.csv(reject_table, "recent_sim1.csv")
+#write.csv(reject_table, "recent_sim1_large.csv")
 ```
+
+### Study 2
 
 ```{r}
 set.seed(51483464)
@@ -872,6 +901,12 @@ write.csv(reject_table, "recent_sim2.csv")
 ```
 
 
+### Study 3
+
+
+
+
+
 ## Suspicion
 
 ```{r}
@@ -886,14 +921,14 @@ delta <- c(1, 1.5)
 cases <- expand_grid(N, n, sigma, delta, alpha)
 
 columns = c("case", "iteration", "DD", "PN", "HP", "PS1", "PS1q", "PS2", "PS2q", 
-            "PS3", "PS3q", "WF", "LR", "CI")
+            "PS3", "WF", "LR", "CI")
 results = data.frame(matrix(nrow = 0, ncol = length(columns)))
 colnames(results) = columns
 
 for (case in 1:nrow(cases)) {
-  DD = PN = HP = PS1 = PS1q = PS2 = PS2q = PS3 = PS3q = WF = LR = rep(NA, B)
+  DD = PN = HP = PS1 = PS1q = PS2 = PS2q = PS3 = WF = LR = rep(NA, B)
   case_storage = data.frame(iteration = seq_len(B), DD, PN, HP, PS1, PS1q,
-                            PS2, PS2q, PS3, PS3q, WF, LR)
+                            PS2, PS2q, PS3,  WF, LR)
   for (b in 1:B) {
     pop = generate_data_study1(N = cases$N[case],
                                sigma = cases$sigma[case],
@@ -909,10 +944,8 @@ for (case in 1:nrow(cases)) {
     case_storage$PS2[b] = PS2_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
     case_storage$PS2q[b] = PS2q_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
     case_storage$PS3[b] = PS3_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
-    case_storage$PS3q[b] = PS3q_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
     case_storage$WF[b] = WF_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
     case_storage$LR[b] = LR_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
-    #case_storage$CI[b] = confint_test(data = samp, y = samp$y, x = samp$x, wts = samp$w, alpha = 0.10)
   }
   
   results = rbind(results, cbind(case, case_storage))
@@ -933,7 +966,6 @@ reject = results %>%
          PS2q = case_when(PS2q <= 0.05 ~ 1, TRUE ~ 0),
          PS3 = case_when(PS3 <= 0.05 ~ 1, TRUE ~ 0),
          WF = case_when(WF <= 0.05 ~ 1, TRUE ~ 0),
-         Ps3q = case_when(PS3q <= 0.05 ~ 1, TRUE ~ 0),
          LR = case_when(LR <= 0.05 ~ 1, TRUE ~ 0),
          PN = case_when(PN <= 0.05 ~ 1, TRUE ~ 0)) %>%
   select(-iteration) %>%
@@ -947,7 +979,6 @@ reject = results %>%
          PS2q = format(round(PS2q * 100, 1), nsmall = 1),
          PS3 = format(round(PS3 * 100, 1), nsmall = 1),
          WF = format(round(WF * 100, 1), nsmall = 1),
-         PS3q = format(round(PS3q * 100, 1), nsmall = 1),
          LR = format(round(LR * 100, 1), nsmall = 1),
          PN = format(round(PN * 100, 1), nsmall = 1))
 
