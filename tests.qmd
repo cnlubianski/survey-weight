@@ -37,19 +37,31 @@ generate_data_study2 = function(N, sigma, alpha) {
 }
 
 # Make Study 3 data generation
-generate_data_study3 = function(N, sigma, alpha) {
-  X <- runif(N, 0, 0.5)
-  epsilon <- runif(N, 0, 0.5)
+generate_data_study3 = function(N, alpha, psi) {
+  X <- rnorm(N, 0, sd = sqrt(0.5))
+  epsilon <- rnorm(N, 0, sd = sqrt(0.5))
+  z <- rnorm(N, 0, sd = sqrt(0.5))
+  beta = 2 - alpha
   
-  X <- runif(N, 0, 1)
-  u <- runif(N, 0, 1)
-  epsilon <- rnorm(N, 0, sd = sigma)
+  eta = function(x) {
+    ifelse(x < 0.2, 0.025,
+               ifelse(0.2 <= x & x <= 1.2, 0.475 * (x - 0.2) + 0.025,
+               0.5))
+  }
   
-  Y <- 1 + X + epsilon
-  w <- alpha * (Y - 1.5 * alpha)^2 + 0.3 * X - 0.3 * X^2 + u
+  Y <- 0.5 + X + epsilon
+  w <- alpha * eta(X) + beta * eta(psi * epsilon + (1 - psi) * z)
   data = data.frame(y = Y, x = X, w)
   return(data)
 }
+
+# sigma = sqrt(0.5)
+# study3_integral = function(x) {
+#   (x / sigma) / sqrt(2 * pi) * exp(-(x / sigma)^2 / 2)
+# }
+# integrate(study3_integral, lower = 0.2, upper = 1.2)
+# 
+# study3_integral(x = X)
 
 generate_sample_brewer = function(data, w, n, rescale = FALSE) {
   pik = inclusionprobabilities(w, n)
@@ -62,10 +74,20 @@ generate_sample_brewer = function(data, w, n, rescale = FALSE) {
 
 # Make Study 3 data sampling via poisson sampling
 generate_sample_poisson = function(data, w, n, rescale = FALSE) {
-  pik = inclusionprobabilities(w, n)
-  choosen = UPbrewer(pik)
-  samp = data[1:nrow(data) * choosen,] %>%
-    mutate(w = 1 / pik[1:nrow(data) * choosen])
+  choosen = as.numeric(runif(length(w), 0, (1 / n) * sum(w)) < w)
+  samp = cbind(data, choosen) %>%
+    filter(choosen == 1) %>%
+    select(-choosen) %>%
+    mutate(w = 1 / w) # Redefine from pi to weights w
+  if (rescale == TRUE) mutate(samp, w = w / sum(w))
+  return(samp)
+}
+
+generate_sample_poisson_suspicious = function(data, w, n, rescale = FALSE) {
+  choosen = as.numeric(runif(length(w), 0, (1 / n) * sum(w)) < w)
+  samp = cbind(data, choosen) %>%
+    filter(choosen == 1) %>%
+    select(-choosen) # Redefine from pi to weights w
   if (rescale == TRUE) mutate(samp, w = w / sum(w))
   return(samp)
 }
@@ -77,7 +99,9 @@ generate_sample_brewer_suspicious = function(data, w, n, rescale = FALSE) {
   if (rescale == TRUE) mutate(samp, w = w / sum(w))
   return(samp)
 }
+```
 
+```{r}
 N <- 3000
 n <- c(100, 200)
 sigma <- c(0.1, 0.2)
@@ -85,11 +109,8 @@ alpha <- c(0.0, 0.2, 0.4, 0.6)
 delta <- c(1.0, 1.5)
 
 cases <- expand_grid(N, n, sigma, delta, alpha)
-```
 
-
-```{r}
-m = 32
+m = 1
 pop = generate_data_study1(N = cases$N[m],
                            sigma = cases$sigma[m],
                            alpha = cases$alpha[m],
@@ -110,8 +131,6 @@ samp = generate_sample_brewer(data = pop,
 # Difference-in-Coefficients Tests
 
 ### Hausman-Pfeffermann DC Test (adapted)
-
-<!----- Redo the math above to include the revised variance estimator ----> 
 
 ```{r}
 # TO-DO: incorporate categorical variables
@@ -444,30 +463,20 @@ PS3q_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
 ### Pfeffermann-Nathan Predictive Power Test
 
 ```{r}
-set.seed(160)
 PN_test = function(data, y, x, wts, est_split = 0.5) {
-  est_index = sample(1:nrow(data), floor(est_split * length(x)))
-  x_est = x[est_index]
-  x_val = x[-est_index]
-  y_est = y[est_index]
-  y_val = y[-est_index]
-  wts_est = wts[est_index]
-  wts_val = wts[-est_index]
+  index = sample(1:nrow(data), floor(est_split * length(x)))
   
-  est_samp = data[est_index,]
-  val_samp = data[-est_index,]
-  
-  # Unweighted Regression --------------
-  X = cbind(1, x_est)
-  betas_u = solve(t(X) %*% X) %*% t(X) %*% y_est
-  y_val_u = cbind(1, x_val) %*% betas_u
-  v_u = y_val - y_val_u
+  # Unweighted Regression
+  X = cbind(1, x[index])
+  betas_u = solve(t(X) %*% X) %*% t(X) %*% y[index]
+  y_val_u = cbind(1, x[-index]) %*% betas_u
+  v_u = y[-index] - y_val_u
     
-  # Weighted Regression ----------------
-  W = diag(x = wts_est)
-  betas_w = solve(t(X) %*% W %*% X) %*% t(X) %*% W %*% y_est
-  y_val_w = cbind(1, x_val) %*% betas_w
-  v_w = y_val - y_val_w
+  # Weighted Regression 
+  W = diag(wts[index])
+  betas_w = solve(t(X) %*% W %*% X) %*% t(X) %*% W %*% y[index]
+  y_val_w = cbind(1, x[-index]) %*% betas_w
+  v_w = y[-index] - y_val_w
   
   # Standard Z-test
   D = v_u^2 - v_w^2
@@ -475,54 +484,55 @@ PN_test = function(data, y, x, wts, est_split = 0.5) {
   p_value = 2 * pnorm(abs(Z), lower.tail = FALSE)
   return(p_value)
 }
-
 PN_test(data = samp, y = samp$y, x = samp$x, wts = samp$w, est_split = 0.7)
 
-######### 
-# est_split = 0.99
-# data = samp
-# y = samp$y
-# x = samp$x
-# wts = samp$w
-# 
-# 
-# # set.seed(160)
-# est_index = sample(1:nrow(data), floor(est_split * length(x)))
-#   x_est = x[est_index]
-#   x_val = x[-est_index]
-#   y_est = y[est_index]
-#   y_val = y[-est_index]
-#   wts_est = wts[est_index]
-#   wts_val = wts[-est_index]
-#   
-#   est_samp = data[est_index,]
-#   val_samp = data[-est_index,]
-#   
-#   # Unweighted Regression --------------
-#   X = cbind(1, x_est)
-#   betas_u = solve(t(x_est) %*% x_est) %*% t(x_est) %*% y_est
-#   y_val_u = x_val %*% betas_u
-#   v_u = y_val - y_val_u
-#     
-#   # Weighted Regression ----------------
-#   W =  diag(x = wts_est)
-#   betas_w = solve(t(x_est) %*% W %*% x_est) %*% t(x_est) %*% W %*% y_est
-#   y_val_w = x_val %*% betas_w
-#   v_w = y_val - y_val_w
-#   
-#   
-#   D_bar = mean(v_u^2 - v_w^2)
-#   S_D = sd(v_u^2 - v_w^2)
-#   Z = (D_bar - 0) / (S_D / sqrt(length(y)))
-#   
-#   # Standard Z-test
-#   D = v_u^2 - v_w^2
-#   #Z = (mean(D) - 0) / sd(D)
-#   p_value = 2 * (1 - pnorm(abs(Z), mean = 0, sd = 1, lower.tail = TRUE))
-#   p_value
-# 
-#   hist(rnorm(1000))
-#   abline(v = Z)
+PN_test_new = function(data, y, x, wts, est_split = 0.5) {
+  
+}
+PN_test_new(data = samp, y = samp$y, x = samp$x, wts = samp$w, est_split = 0.7)
+
+
+
+y = samp$y
+x = samp$x
+wts = samp$w
+data = samp
+index = sample(1:nrow(data), floor(est_split * length(x)))
+  
+# Unweighted Regression
+X = cbind(1, x[index])
+betas_u = solve(t(X) %*% X) %*% t(X) %*% y[index]
+y_val_u = cbind(1, x[-index]) %*% betas_u
+v_u = y[-index] - y_val_u
+  
+# Weighted Regression 
+W = diag(wts[index])
+betas_w = solve(t(X) %*% W %*% X) %*% t(X) %*% W %*% y[index]
+y_val_w = cbind(1, x[-index]) %*% betas_w
+v_w = y[-index] - y_val_w
+
+# Standard Z-test
+D = v_u^2 - v_w^2
+Z = (mean(D) - 0) / (sd(D) / sqrt(length(y)))
+p_value = 2 * pnorm(abs(Z), lower.tail = FALSE)
+p_value
+
+
+lmw = lm(y ~ x, data = samp[-index,], weights = w)
+lmo = lm(y ~ x, data = samp[-index,])
+
+print(v_w)
+```
+
+
+
+
+
+
+```{r}
+####################################3
+
+#For determining when each test performs well, do a heatmap and facit by extreme case
 ```
 
 
@@ -735,7 +745,7 @@ hist(stat_stor)
 
 ```{r}
 set.seed(51483464)
-B = 1000 # 5000 for large study
+B = 10000 # for large study # 1000 for normal
 
 N <- 3000
 n <- c(100, 200)
@@ -781,7 +791,7 @@ write.csv(results, "st1_results.csv")
 ```
 
 ```{r}
- results = read.csv("st1_results.csv")
+results = read.csv("st1_results.csv")
 #results = read.csv("st1_results_large.csv")
 
 reject = results %>%
@@ -792,7 +802,6 @@ reject = results %>%
          PS2 = case_when(PS2 <= 0.05 ~ 1, TRUE ~ 0),
          PS2q = case_when(PS2q <= 0.05 ~ 1, TRUE ~ 0),
          PS3 = case_when(PS3 <= 0.05 ~ 1, TRUE ~ 0),
-         PS3q = case_when(PS3q <= 0.05 ~ 1, TRUE ~ 0),
          WF = case_when(WF <= 0.05 ~ 1, TRUE ~ 0),
          LR = case_when(LR <= 0.05 ~ 1, TRUE ~ 0),
          PN = case_when(PN <= 0.05 ~ 1, TRUE ~ 0)) %>%
@@ -808,13 +817,12 @@ reject = results %>%
          PS3 = format(round(PS3 * 100, 1), nsmall = 1),
          WF = format(round(WF * 100, 1), nsmall = 1),
          LR = format(round(LR * 100, 1), nsmall = 1),
-         PN = format(round(PN * 100, 1), nsmall = 1),
-         PS3q = format(round(PS3q * 100, 1), nsmall = 1))
+         PN = format(round(PN * 100, 1), nsmall = 1))
 
 reject_table = cbind(cases, reject) %>% select(-c(N, case, X))
 reject_table
 
-write.csv(reject_table, "recent_sim1.csv")
+#write.csv(reject_table, "recent_sim1.csv")
 #write.csv(reject_table, "recent_sim1_large.csv")
 ```
 
@@ -822,7 +830,7 @@ write.csv(reject_table, "recent_sim1.csv")
 
 ```{r}
 set.seed(51483464)
-B = 1000
+B = 10000 # 1000
 
 N <- 3000
 n <- c(100, 200)
@@ -831,14 +839,14 @@ alpha <- c(0, 0.5, 1.0, 1.5)
 cases <- expand_grid(N, n, sigma, alpha)
 
 columns = c("case", "iteration", "DD", "PN", "HP", "PS1", "PS1q", "PS2", "PS2q", 
-            "PS3", "PS3q", "WF", "LR")
+            "PS3", "WF", "LR")
 results = data.frame(matrix(nrow = 0, ncol = length(columns)))
 colnames(results) = columns
 
 for (case in 1:nrow(cases)) {
-  DD = PN = HP = PS1 = PS1q = PS2 = PS2q = PS3 = PS3q = WF = LR = rep(NA, B)
+  DD = PN = HP = PS1 = PS1q = PS2 = PS2q = PS3 = WF = LR = rep(NA, B)
   case_storage = data.frame(iteration = seq_len(B), DD, PN, HP, PS1, PS1q,
-                            PS2, PS2q, PS3, PS3q, WF, LR)
+                            PS2, PS2q, PS3, WF, LR)
   for (b in 1:B) {
     pop = generate_data_study2(N = cases$N[case],
                                sigma = cases$sigma[case],
@@ -855,17 +863,18 @@ for (case in 1:nrow(cases)) {
     case_storage$PS3[b] = PS3_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
     case_storage$WF[b] = WF_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
     case_storage$LR[b] = LR_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
-    case_storage$PS3q[b] = PS3q_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
   }
   
   results = rbind(results, cbind(case, case_storage))
   print(case)
 }
-write.csv(results, "st2_results.csv")
+# write.csv(results, "st2_results.csv")
+write.csv(results, "st2_results_large.csv")
 ```
 
 ```{r}
-results = read.csv("st2_results.csv")
+results = read.csv("st2_results_large.csv")
+#results = read.csv("st2_results.csv")
 
 reject = results %>%
   mutate(HP = case_when(HP <= 0.05 ~ 1, TRUE ~ 0),
@@ -876,7 +885,6 @@ reject = results %>%
          PS2q = case_when(PS2q <= 0.05 ~ 1, TRUE ~ 0),
          PS3 = case_when(PS3 <= 0.05 ~ 1, TRUE ~ 0),
          WF = case_when(WF <= 0.05 ~ 1, TRUE ~ 0),
-         PS3q = case_when(PS3q <= 0.05 ~ 1, TRUE ~ 0),
          LR = case_when(LR <= 0.05 ~ 1, TRUE ~ 0),
          PN = case_when(PN <= 0.05 ~ 1, TRUE ~ 0)) %>%
   select(-iteration) %>%
@@ -890,51 +898,43 @@ reject = results %>%
          PS2q = format(round(PS2q * 100, 1), nsmall = 1),
          PS3 = format(round(PS3 * 100, 1), nsmall = 1),
          WF = format(round(WF * 100, 1), nsmall = 1),
-         PS3q = format(round(PS3q * 100, 1), nsmall = 1),
          LR = format(round(LR * 100, 1), nsmall = 1),
          PN = format(round(PN * 100, 1), nsmall = 1))
 
 reject_table = cbind(cases, reject) %>% select(-c(N, case))
 reject_table
 
-write.csv(reject_table, "recent_sim2.csv")
+#write.csv(reject_table, "recent_sim2.csv")
+write.csv(reject_table, "recent_sim2_large.csv")
 ```
 
 
 ### Study 3
 
-
-
-
-
-## Suspicion
-
 ```{r}
 set.seed(51483464)
-B = 1000
+B = 10000 # 1000
 
 N <- 3000
 n <- c(100, 200)
-sigma <- c(0.1, 0.2)
-alpha <- c(0, 0.2, 0.4, 0.6)
-delta <- c(1, 1.5)
-cases <- expand_grid(N, n, sigma, delta, alpha)
+psi <- c(0.0, 0.1, 0.2, 0.3)
+alpha <- c(1.00, 0.75, 0.50, 0.25)
+cases <- expand_grid(N, n, alpha, psi)
 
 columns = c("case", "iteration", "DD", "PN", "HP", "PS1", "PS1q", "PS2", "PS2q", 
-            "PS3", "WF", "LR", "CI")
+            "PS3", "PS3q", "WF", "LR")
 results = data.frame(matrix(nrow = 0, ncol = length(columns)))
 colnames(results) = columns
 
 for (case in 1:nrow(cases)) {
   DD = PN = HP = PS1 = PS1q = PS2 = PS2q = PS3 = WF = LR = rep(NA, B)
   case_storage = data.frame(iteration = seq_len(B), DD, PN, HP, PS1, PS1q,
-                            PS2, PS2q, PS3,  WF, LR)
+                            PS2, PS2q, PS3, WF, LR)
   for (b in 1:B) {
-    pop = generate_data_study1(N = cases$N[case],
-                               sigma = cases$sigma[case],
+    pop = generate_data_study3(N = cases$N[case],
                                alpha = cases$alpha[case],
-                               delta = cases$delta[case])
-    samp = generate_sample_brewer_suspicious(pop, w = pop$w, n = cases$n[case])
+                               psi = cases$psi[case])
+    samp = generate_sample_poisson(pop, w = pop$w, n = cases$n[case])
     
     case_storage$DD[b] = DD_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
     case_storage$PN[b] = PN_test(data = samp, y = samp$y, x = samp$x, wts = samp$w, est_split = 0.5)
@@ -951,11 +951,93 @@ for (case in 1:nrow(cases)) {
   results = rbind(results, cbind(case, case_storage))
   print(case)
 }
-write.csv(results, "st1_suspicious.csv")
+#write.csv(results, "st3_results.csv")
+write.csv(results, "st3_results_large.csv")
 ```
 
 ```{r}
-results = read.csv("st1_suspicious.csv")
+results = read.csv("st3_results_large.csv")
+# results = read.csv("st3_results.csv")
+
+reject = results %>%
+  mutate(HP = case_when(HP <= 0.05 ~ 1, TRUE ~ 0),
+         DD = case_when(DD <= 0.05 ~ 1, TRUE ~ 0),
+         PS1 = case_when(PS1 <= 0.05 ~ 1, TRUE ~ 0),
+         PS1q = case_when(PS1q <= 0.05 ~ 1, TRUE ~ 0),
+         PS2 = case_when(PS2 <= 0.05 ~ 1, TRUE ~ 0),
+         PS2q = case_when(PS2q <= 0.05 ~ 1, TRUE ~ 0),
+         PS3 = case_when(PS3 <= 0.05 ~ 1, TRUE ~ 0),
+         WF = case_when(WF <= 0.05 ~ 1, TRUE ~ 0),
+         LR = case_when(LR <= 0.05 ~ 1, TRUE ~ 0),
+         PN = case_when(PN <= 0.05 ~ 1, TRUE ~ 0)) %>%
+  select(-iteration) %>%
+  group_by(case) %>%
+  summarize(across(everything(), mean)) %>%
+  mutate(HP = format(round(HP * 100, 1), nsmall = 1),
+         DD = format(round(DD * 100, 1), nsmall = 1),
+         PS1 = format(round(PS1 * 100, 1), nsmall = 1),
+         PS1q = format(round(PS1q * 100, 1), nsmall = 1),
+         PS2 = format(round(PS2 * 100, 1), nsmall = 1),
+         PS2q = format(round(PS2q * 100, 1), nsmall = 1),
+         PS3 = format(round(PS3 * 100, 1), nsmall = 1),
+         WF = format(round(WF * 100, 1), nsmall = 1),
+         LR = format(round(LR * 100, 1), nsmall = 1),
+         PN = format(round(PN * 100, 1), nsmall = 1))
+
+reject_table = cbind(cases, reject) %>% select(-c(N, case))
+reject_table
+
+#write.csv(reject_table, "recent_sim3.csv")
+write.csv(reject_table, "recent_sim3_large.csv")
+```
+
+## Suspicion
+
+```{r}
+set.seed(51483464)
+B = 1000
+
+N <- 3000
+n <- c(100, 200)
+psi <- c(0.0, 0.1, 0.2, 0.3)
+alpha <- c(1.00, 0.75, 0.50, 0.25)
+cases <- expand_grid(N, n, alpha, psi)
+
+columns = c("case", "iteration", "DD", "PN", "HP", "PS1", "PS1q", "PS2", "PS2q", 
+            "PS3", "PS3q", "WF", "LR")
+results = data.frame(matrix(nrow = 0, ncol = length(columns)))
+colnames(results) = columns
+
+for (case in 1:nrow(cases)) {
+  DD = PN = HP = PS1 = PS1q = PS2 = PS2q = PS3 = WF = LR = rep(NA, B)
+  case_storage = data.frame(iteration = seq_len(B), DD, PN, HP, PS1, PS1q,
+                            PS2, PS2q, PS3, WF, LR)
+  for (b in 1:B) {
+    pop = generate_data_study3(N = cases$N[case],
+                               alpha = cases$alpha[case],
+                               psi = cases$psi[case])
+    samp = generate_sample_poisson_suspicious(pop, w = pop$w, n = cases$n[case])
+    
+    case_storage$DD[b] = DD_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
+    case_storage$PN[b] = PN_test(data = samp, y = samp$y, x = samp$x, wts = samp$w, est_split = 0.5)
+    case_storage$HP[b] = HP_DC_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
+    case_storage$PS1[b] = PS1_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
+    case_storage$PS1q[b] = PS1q_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
+    case_storage$PS2[b] = PS2_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
+    case_storage$PS2q[b] = PS2q_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
+    case_storage$PS3[b] = PS3_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
+    case_storage$WF[b] = WF_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
+    case_storage$LR[b] = LR_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
+  }
+  
+  results = rbind(results, cbind(case, case_storage))
+  print(case)
+}
+write.csv(results, "st3_suspicious.csv")
+```
+
+```{r}
+results = read.csv("st3_suspicious.csv")
 
 reject = results %>%
   mutate(HP = case_when(HP <= 0.05 ~ 1, TRUE ~ 0),
@@ -985,8 +1067,9 @@ reject = results %>%
 reject_table = cbind(cases, reject) %>% select(-c(N, case)) 
 reject_table
 
-write.csv(reject_table, "suspicious_sim1.csv")
+write.csv(reject_table, "suspicious_sim3.csv")
 ```
+
 
 
 
@@ -994,7 +1077,7 @@ write.csv(reject_table, "suspicious_sim1.csv")
 
 ```{r}
 set.seed(51483464)
-B = 500
+B = 1000
 
 N <- 3000
 n <- c(100, 200)
@@ -1003,13 +1086,13 @@ alpha <- c(0, 0.2, 0.4, 0.6)
 delta <- c(1.5, 1)
 cases <- expand_grid(N, n, sigma, delta, alpha)
 
-columns = c("case", "iteration", "PS3", "PS3wo") ###
+columns = c("case", "iteration", "PN", "PN_new") ###
 mini_results = data.frame(matrix(nrow = 0, ncol = length(columns)))
 colnames(mini_results) = columns
 
 for (case in 1:nrow(cases)) {
-  PS3 = PS3wo = rep(NA, B) ###
-  case_storage = data.frame(iteration = seq_len(B), PS3, PS3wo) ###
+  PN = PN_new = rep(NA, B) ###
+  case_storage = data.frame(iteration = seq_len(B), PN, PN_new) ###
   for (b in 1:B) {
     pop = generate_data_study1(N = cases$N[case],
                                sigma = cases$sigma[case],
@@ -1017,8 +1100,8 @@ for (case in 1:nrow(cases)) {
                                delta = cases$delta[case])
     samp = generate_sample_brewer(pop, w = pop$w, n = cases$n[case])
     
-    case_storage$PS3[b] = PS3_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
-    case_storage$PS3wo[b] = PS3_test_wo(data = samp, y = samp$y, x = samp$x, wts = samp$w)
+    case_storage$PN[b] = PN_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
+    case_storage$PN_new[b] = PN_test_new(data = samp, y = samp$y, x = samp$x, wts = samp$w)
     
     ###
     #case_storage$PN50[b] = PN_test(data = samp, y = samp$y, x = samp$x, wts = samp$w, est_split = 0.5)
@@ -1031,14 +1114,37 @@ for (case in 1:nrow(cases)) {
 }
 
 reject_mini = mini_results %>% ###
-  mutate(PS3 = case_when(PS3 <= 0.05 ~ 1, TRUE ~ 0),
-         PS3wo = case_when(PS3wo <= 0.05 ~ 1, TRUE ~ 0)) %>%
+  mutate(PN = case_when(PN <= 0.05 ~ 1, TRUE ~ 0),
+         PN_new = case_when(PN_new <= 0.05 ~ 1, TRUE ~ 0)) %>%
   select(-iteration) %>%
   group_by(case) %>%
   summarize(across(everything(), mean))
 
 reject_mini_table = cbind(cases, reject_mini) %>% select(-c(N, case))
 reject_mini_table
+```
+
+### E(W_i) Derivation
+
+```{r}
+psi_list <- c(0.0, 0.1, 0.2, 0.3)
+alpha_list <- c(1.00, 0.75, 0.50, 0.25)
+
+psi = psi_list[4]
+alpha = alpha_list[4]
+beta = 2 - alpha
+eta_x = 0.110367
+sigma_v = sqrt(0.5 * (psi^2 + (1 - psi)^2))
+
+study3_integral = function(x) {
+   (x / sigma_v) / sqrt(2 * pi) * exp(-(x / sigma_v)^2 / 2)
+}
+
+mean = alpha * eta_x + beta * (0.025 * pnorm(0.2 / sigma_v) +
+  0.475 * integrate(study3_integral, lower = 0.2, upper = 1.2)$value -
+  0.07 * (pnorm(1.2 / sigma_v) - pnorm(0.2 / sigma_v)) +
+  0.5 * (1 - pnorm(1.2 / sigma_v)))
+mean
 ```
 
 ### Hausman-Pfeffermann DC Test Simulation
