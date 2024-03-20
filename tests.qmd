@@ -745,7 +745,7 @@ hist(stat_stor)
 
 ```{r}
 set.seed(51483464)
-B = 10000 # for large study # 1000 for normal
+B = 1000 # 10000 for large study # 1000 for normal
 
 N <- 3000
 n <- c(100, 200)
@@ -755,14 +755,14 @@ delta <- c(1.5, 1)
 cases <- expand_grid(N, n, sigma, delta, alpha)
 
 columns = c("case", "iteration", "DD", "PN", "HP", "PS1", "PS1q", "PS2", "PS2q", 
-            "PS3", "PS3q", "WF", "LR")
+            "PS3", "WF", "LR")
 results = data.frame(matrix(nrow = 0, ncol = length(columns)))
 colnames(results) = columns
 
 for (case in 1:nrow(cases)) {
-  DD = PN = HP = PS1 = PS1q = PS2 = PS2q = PS3 = PS3q = WF = LR = rep(NA, B)
+  DD = PN = HP = PS1 = PS1q = PS2 = PS2q = PS3 = WF = LR = rep(NA, B)
   case_storage = data.frame(iteration = seq_len(B), DD, PN, HP, PS1, PS1q,
-                            PS2, PS2q, PS3, PS3q, WF, LR)
+                            PS2, PS2q, PS3, WF, LR)
   for (b in 1:B) {
     pop = generate_data_study1(N = cases$N[case],
                                sigma = cases$sigma[case],
@@ -778,7 +778,6 @@ for (case in 1:nrow(cases)) {
     case_storage$PS2[b] = PS2_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
     case_storage$PS2q[b] = PS2q_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
     case_storage$PS3[b] = PS3_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
-    case_storage$PS3q[b] = PS3q_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
     case_storage$WF[b] = WF_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
     case_storage$LR[b] = LR_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
   }
@@ -824,6 +823,8 @@ reject_table
 
 #write.csv(reject_table, "recent_sim1.csv")
 #write.csv(reject_table, "recent_sim1_large.csv")
+
+hi = read.csv("recent_sim1.csv")
 ```
 
 ### Study 2
@@ -873,8 +874,8 @@ write.csv(results, "st2_results_large.csv")
 ```
 
 ```{r}
-results = read.csv("st2_results_large.csv")
-#results = read.csv("st2_results.csv")
+#results = read.csv("st2_results_large.csv")
+results = read.csv("st2_results.csv")
 
 reject = results %>%
   mutate(HP = case_when(HP <= 0.05 ~ 1, TRUE ~ 0),
@@ -906,6 +907,68 @@ reject_table
 
 #write.csv(reject_table, "recent_sim2.csv")
 write.csv(reject_table, "recent_sim2_large.csv")
+```
+
+```{r}
+heatmap_data = results %>%
+  mutate(HP = case_when(HP <= 0.05 ~ 1, TRUE ~ 0),
+         DD = case_when(DD <= 0.05 ~ 1, TRUE ~ 0),
+         PS1 = case_when(PS1 <= 0.05 ~ 1, TRUE ~ 0),
+         PS1q = case_when(PS1q <= 0.05 ~ 1, TRUE ~ 0),
+         PS2 = case_when(PS2 <= 0.05 ~ 1, TRUE ~ 0),
+         PS2q = case_when(PS2q <= 0.05 ~ 1, TRUE ~ 0),
+         PS3 = case_when(PS3 <= 0.05 ~ 1, TRUE ~ 0),
+         WF = case_when(WF <= 0.05 ~ 1, TRUE ~ 0),
+         LR = case_when(LR <= 0.05 ~ 1, TRUE ~ 0),
+         PN = case_when(PN <= 0.05 ~ 1, TRUE ~ 0)) %>%
+  cbind(., cases) %>%
+  filter(n %in% c(100,200), alpha %in% c(0.5, 1.0)) %>%
+  select(-c(X, case, PS3q, iteration, LR, PN, N, sigma)) #%>%
+  #melt(id.vars = "iteration")
+
+
+help = results %>%
+  mutate(HP = case_when(HP <= 0.05 ~ 1, TRUE ~ 0),
+         DD = case_when(DD <= 0.05 ~ 1, TRUE ~ 0),
+         PS1 = case_when(PS1 <= 0.05 ~ 1, TRUE ~ 0),
+         PS1q = case_when(PS1q <= 0.05 ~ 1, TRUE ~ 0),
+         PS2 = case_when(PS2 <= 0.05 ~ 1, TRUE ~ 0),
+         PS2q = case_when(PS2q <= 0.05 ~ 1, TRUE ~ 0),
+         PS3 = case_when(PS3 <= 0.05 ~ 1, TRUE ~ 0),
+         WF = case_when(WF <= 0.05 ~ 1, TRUE ~ 0),
+         LR = case_when(LR <= 0.05 ~ 1, TRUE ~ 0),
+         PN = case_when(PN <= 0.05 ~ 1, TRUE ~ 0)) %>%
+  filter(case %in% c(2,3,6,7)) %>%
+  select(-c(X, PS3q, iteration, LR, PN))
+
+
+head(heatmap_data)
+
+hi = cor(heatmap_data)
+
+why = rbind(cor(filter(help, case == 2) %>% select(-case)),
+      cor(filter(help, case == 3) %>% select(-case)),
+      cor(filter(help, case == 6) %>% select(-case)),
+      cor(filter(help, case == 7) %>% select(-case)))
+
+
+case4 = cbind(as.data.frame(as.table(cor(filter(help, case == 7) %>% select(-case)))),
+              )
+
+
+library(reshape)
+
+ggplot(data = as.data.frame(as.table(cor(heatmap_data)))) + 
+  geom_tile(aes(x = Var1, y = Var2, fill = Freq)) +
+    scale_fill_gradient(low = "white", high = "black")
+
+
+
+heatmap(hi,
+        col = colorRampPalette(c("blue", "white", "red"))(100),
+        main = "Correlation Heatmap",
+        xlab = "Variables",
+        ylab = "Variables")
 ```
 
 

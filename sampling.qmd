@@ -20,203 +20,55 @@ First, we need to get to our population to sample from by filtering and doing a 
 ```{r}
 ce = rpms::CE %>%
   filter(SALARYX < 250000 & SALARYX > 0) %>%
-  filter(TOTEXPCQ > 0 & FINCBTAX > 0 & !is.na(REGION)) %>%
+  filter(TOTEXPCQ > 0 & FINCBTAX > 10 & !is.na(REGION) & !is.na(STATE)) %>%
   mutate(TOTEXPCQ = log(TOTEXPCQ), FINCBTAX = log(FINCBTAX)) %>%
   select(-c(QINTRVMO, PSU, INCNONWK, IRAX, LIQUIDX, STOCKX, STUDNTX,
             FOOTWRCQ, TOBACCCQ, TOTXEST, VEHQL))
 
-ce %>% group_by(NEWID) %>%
-  summarize(n = n()) %>%
-  filter(n > 1)
+ce = ce %>%
+  group_by(CID) %>%
+  filter(n() >= 50) %>%
+  ungroup() %>%
+  mutate(CID = droplevels(CID))
+
+ce = ce %>%
+  group_by(STATE) %>%
+  filter(n() >= 50) %>%
+  ungroup() %>%
+  mutate(STATE = droplevels(STATE))
+
+ce = ce %>%
+  group_by(STATE, POPSIZE) %>%
+  filter(n() >= 50) %>%
+  ungroup()
+  
 
 
 ggplot(ce, aes(x = TOTEXPCQ, y = FINCBTAX)) + 
-  geom_point(alpha = 0.05) + 
-  geom_smooth(method = "lm")
+  geom_point(alpha = 0.05, aes(size = FINLWT21)) + 
+  geom_smooth(method = "lm", color = "blue") + 
+  geom_smooth(method = "lm", aes(weight = FINLWT21), color = "green")
 ```
 
 ## Sampling
 
-Now, we need to start constructing our sampling techniques
-
-```{r}
-# I want to call a single sampling function then choose which method
-# Returning, I want the sampled dataframe with weights
-
-sampling <- function(dataset, sample_size, method, variable = NULL, nh = NULL, noise_sd = NULL) {
-  
-  # Check if mandatory parameters are correct
-  stopifnot(is.numeric(sample_size)) 
-  stopifnot(is.character(method) & method %in% c("grouping", "pps", "strata"))
-  stopifnot(is.data.frame(dataset))
-  
-  # Extract column vector
-  data = NULL
-  if (variable %in% names(dataset)) {
-    data = dataset[[variable]]
-  } else {
-    stopifnot(is.character(variable))
-    stop(paste("The dataset does not contain a column named", variable))
-  }
-  
-
-  # Calulate inclusion probabilities
-  pik = NULL
-  if (method == "grouping") {
-    pik = grouping(data = data, nh = nh)
-  } 
-  if (method == "pps") {
-    pik = pps(data = data, n = sample_size, noise_sd = noise_sd)
-  } 
-  if (method == "strata") {
-    pik = region_strata(data = data, nh = nh)
-  } 
-  
-  # Add weights to dataset for later
-  dataset$wts = 1 / pik
-  
-  # Sample vector using pik
-  sample_vector = UPbrewer(pik)
-  
-  # Return data
-  return(dataset[1:nrow(dataset) * sample_vector,])
-}
-
-# fix bug
-y = sampling(dataset = ce, sample_size = 150, method = "grouping", nh = c(10, 15, 25, 50), variable = "FINCBTAX", noise_sd = 0.05)
-```
-
-
-### Preliminary CE Simulation
-
-```{r, message = FALSE, warning = FALSE}
-n <- c(25, 50, 100, 500, 1000)
-methods <- c("grouping", "pps", "strata")
-
-cases <- expand_grid(n, methods)
-
-set.seed(51483464)
-B = 1000
-
-columns = c("case", "iteration", "DD", "PN", "HP", "PS1", "PS1q", "PS2", "PS2q", 
-            "PS3", "WF", "LR", "CI")
-storage = data.frame(matrix(nrow = 0, ncol = length(columns)))
-colnames(storage) = columns
-
-for (case in 1:nrow(cases)) {
-  DD = PN = HP = PS1 = PS1q = PS2 = PS2q = PS3 = WF = LR = CI = rep(NA, B)
-  case_storage = data.frame(iteration = seq_len(B), DD, PN, HP, PS1, PS1q,
-                            PS2, PS2q, PS3, WF, LR, CI)
-  # Variable to sample with
-  variable = ifelse(cases$methods[case] %in% c("pps", "grouping"), "FINCBTAX", "REGION")
-  
-  for (b in 1:B) {
-    samp = sampling(dataset = ce,
-                    sample_size = cases$n[case],
-                    method = cases$methods[case],
-                    nh = c(10, 15, 25, 50),
-                    variable = variable,
-                    noise_sd = 0.05)
-    case_storage$HP[b] = HP_DC_test(data = samp, y = samp$FINCBTAX, x = samp$TOTEXPCQ, wts = samp$wts)
-    case_storage$DD[b] = DD_WA_test(data = samp, y = samp$FINCBTAX, x = samp$TOTEXPCQ, wts = samp$wts)
-    case_storage$PS1[b] = PS1_WA_test(data = samp, y = samp$FINCBTAX, x = samp$TOTEXPCQ, wts = samp$wts)
-    case_storage$PS2[b] = PS2_WA_test(data = samp, y = samp$FINCBTAX, x = samp$TOTEXPCQ, wts = samp$wts)
-    case_storage$PS3[b] = PS3_test(data = samp, y = samp$FINCBTAX, x = samp$TOTEXPCQ, wts = samp$wts)
-    case_storage$WF[b] = WF_WA_test(data = samp, y = samp$FINCBTAX, x = samp$TOTEXPCQ, wts = samp$wts)
-    
-    case_storage$DD[b] = DD_WA_test(data = samp, y = samp$FINCBTAX, x = samp$TOTEXPCQ, wts = samp$wts)
-    case_storage$PN[b] = PN_test(data = samp, y = samp$FINCBTAX, x = samp$TOTEXPCQ, wts = samp$wts, est_split = 0.5)
-    case_storage$HP[b] = HP_DC_test(data = samp, y = samp$FINCBTAX, x = samp$TOTEXPCQ, wts = samp$wts)
-    case_storage$PS1[b] = PS1_WA_test(data = samp, y = samp$FINCBTAX, x = samp$TOTEXPCQ, wts = samp$wts)
-    case_storage$PS1q[b] = PS1q_WA_test(data = samp, y = samp$FINCBTAX, x = samp$TOTEXPCQ, wts = samp$wts)
-    case_storage$PS2[b] = PS2_WA_test(data = samp, y = samp$FINCBTAX, x = samp$TOTEXPCQ, wts = samp$wts)
-    case_storage$PS2q[b] = PS2q_WA_test(data = samp, y = samp$FINCBTAX, x = samp$TOTEXPCQ, wts = samp$wts)
-    case_storage$PS3[b] = PS3_test(data = samp, y = samp$FINCBTAX, x = samp$TOTEXPCQ, wts = samp$wts)
-    case_storage$WF[b] = WF_WA_test(data = samp, y = samp$FINCBTAX, x = samp$TOTEXPCQ, wts = samp$wts)
-    case_storage$LR[b] = LR_test(data = samp, y = samp$FINCBTAX, x = samp$TOTEXPCQ, wts = samp$wts)
-    case_storage$CI[b] = confint_test(data = samp, y = samp$FINCBTAX, x = samp$TOTEXPCQ, wts = samp$wts) 
-    
-  }
-  storage = rbind(storage, cbind(case, case_storage))
-  print(case)
-}
-write.csv(storage, "ce_results.csv")
-```
-
-```{r}
-test_results = read.csv("ce_results.csv")
-
-test_reject = test_results %>%
-  mutate(HP = case_when(HP <= 0.05 ~ 1, TRUE ~ 0),
-         DD = case_when(DD <= 0.05 ~ 1, TRUE ~ 0),
-         PS1 = case_when(PS1 <= 0.05 ~ 1, TRUE ~ 0),
-         PS1q = case_when(PS1q <= 0.05 ~ 1, TRUE ~ 0),
-         PS2 = case_when(PS2 <= 0.05 ~ 1, TRUE ~ 0),
-         PS2q = case_when(PS2q <= 0.05 ~ 1, TRUE ~ 0),
-         PS3 = case_when(PS3 <= 0.05 ~ 1, TRUE ~ 0),
-         WF = case_when(WF <= 0.05 ~ 1, TRUE ~ 0),
-         CI = case_when(CI <= 0.05 ~ 1, TRUE ~ 0),
-         LR = case_when(LR <= 0.05 ~ 1, TRUE ~ 0),
-         PN = case_when(PN <= 0.05 ~ 1, TRUE ~ 0)) %>%
-  select(-iteration) %>%
-  group_by(case) %>%
-  summarize(across(everything(), mean)) %>%
-  mutate(HP = format(round(HP * 100, 1), nsmall = 1),
-         DD = format(round(DD * 100, 1), nsmall = 1),
-         PS1 = format(round(PS1 * 100, 1), nsmall = 1),
-         PS1q = format(round(PS1q * 100, 1), nsmall = 1),
-         PS2 = format(round(PS2 * 100, 1), nsmall = 1),
-         PS2q = format(round(PS2q * 100, 1), nsmall = 1),
-         PS3 = format(round(PS3 * 100, 1), nsmall = 1),
-         WF = format(round(WF * 100, 1), nsmall = 1),
-         CI = format(round(CI * 100, 1), nsmall = 1),
-         LR = format(round(LR * 100, 1), nsmall = 1),
-         PN = format(round(PN * 100, 1), nsmall = 1))
-
-test_reject_table = cbind(cases, test_reject) %>% select(-c(X, case))
-test_reject_table
-
-write.csv(test_reject_table, "ce_reject_table.csv")
-```
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ### Grouping
 
 ```{r}
-# data - numerical vector from which to group and create stratum
-# nh - vector of the number of selected units in each stratum
-
-# People might want to do grouping based on multiple factors / nums TO-DO
-# Consider using interaction() for multiple cuts
-
-# Might be wise to group based on multiple factors since weights will be very large
-
-grouping <- function(data, nh) {
-  N = length(nh) # Number of stratum
-  groups = cut(data, breaks = quantile(data, probs = seq(0, 1, 1 / N)),
-                     include.lowest = TRUE,
-                     labels = FALSE)
-  pik = inclusionprobastrata(groups, nh)
-  return(pik)
+grouping <- function(x, n, strata_prob) {
+  N_h = length(nh) # Number of stratum
+  quantiles <- quantile(x, probs = seq(0, 1, 1 / N_h), na.rm = TRUE)
+  groups <- cut(x, breaks = quantiles, labels = FALSE, include.lowest = TRUE)
+  pik = inclusionprobastrata(strata = groups,
+                           nh = ceiling(sample_size * strata_prob))
+  selected = UPbrewer(pik)
+  return(list(pik = pik, sample = selected))
 }
 
 sample_size = 100
 strata_prob = c(0.1, 0.15, 0.25, 0.5)
 
-ce$pik = grouping(data = ce$FINCBTAX, nh = sample_size * strata_prob)
+hi = grouping(x = ce$FINCBTAX, n = sample_size, strata_prob = strata_prob)
 ```
 
 ### Probability Proportional to Size (PPS)
@@ -252,32 +104,194 @@ With sampling with the inclusion probabilities proportional to size (PPS), an el
 For some small Var$(\varepsilon)$, we will not have to worry about an extremely low case of $Z = 0$ for some $i$ which ensures variation onto $Y$ and positive $Z$.
 
 ```{r}
-pps <- function(data, n, noise_sd) {
-  stopifnot(is.numeric(noise_sd))
-  
-  noise = rnorm(length(data), 0, noise_sd)
-  data_noisy = data * (1 + noise)
-  pik = inclusionprobabilities(data_noisy, n)
-  return(pik)
+pps <- function(x, n, noise_sd) {
+  noise = rnorm(length(x), 0, noise_sd)
+  x_noisy = x * (1 + noise)
+  pik = inclusionprobabilities(x_noisy, n)
+  selected = UPbrewer(pik)
+  return(list(pik = pik, sample = selected))
 }
-
-#pps(ce$FINCBTAX, 1000, noise_sd = 0.05)
+welp = pps(x = ce$FINCBTAX, n = 1000, noise_sd = 0.1)
 ```
 
-### Stratify on Region
+### Two-stage Stratification (STSRS) 
 
 ```{r}
-# TO-DO: Change from region_strata
-region_strata <- function(data, nh) {
-  pik = inclusionprobastrata(as.numeric(data), nh)
-  return(pik)
+stratify <- function(stratum, nh) {
+  pik = inclusionprobastrata(as.numeric(stratum), nh)
+  
+  sampled <- rep(0, length(stratum))
+  for (s in levels(as.factor(stratum))) {
+    indices <- which(stratum == s)
+    selected <- UPbrewer(pik[indices])
+    sampled[indices * selected] <- 1
+  }
+  
+  return(list(pik = pik, sampled = sampled))
+}
+welp = stratify(stratum = ce$REGION, nh = c(150, 150, 500, 200))
+```
+
+### Two-stage Clustering (CL-SRS)
+
+```{r}
+clustering <- function(clusters, n, m) {
+  selected_clusters <- sample(x = unique(clusters), size = n, replace = FALSE)
+  
+  sampled <- rep(0, length(clusters))
+  for (c in selected_clusters) {
+    indices <- which(clusters == c)
+    selected <- sample(indices, size = m, replace = FALSE)
+    sampled[selected] <- 1
+  }
+  
+  clust_pik = data.frame(clust = clusters) %>% # Returns vector of the pik for a jth element
+    group_by(clust) %>%
+    summarize(pik = n / length(unique(clusters)) * m / n())
+  
+  pik_list = left_join(data.frame(clusters = clusters),
+                       mutate(clust_pik, clusters = clust),
+                       by = "clusters")
+  
+  return(list(pik = pik_list$pik, sampled = sampled))
 }
 
-#strata_prop = c(150, 150, 500, 200)
-#region_strata(data = ce$REGION, nh = strata_prop)
+hi = clustering(clusters = ce$CID, n = 25, m = 1)
+sum(hi$sampled)
+```
+
+### Three-stage Clustering - Stratified (CL-ST-SRS)
+
+```{r, message = FALSE}
+three_stage_clust_strat <- function(clusters, stratum, n, sample_size) {
+  selected_clusters <- sample(x = unique(clusters), size = n, replace = FALSE)
+  clust_indices = which(clusters %in% selected_clusters)
+  stratum_in_clust = paste0(clusters[clust_indices], "_", stratum[clust_indices])
+  
+  m = round(sample_size / length(unique(stratum_in_clust)), 0)
+  sampled = threestage %>%
+    filter(clusters %in% selected_clusters) %>%
+    group_by(clusters, stratum) %>%
+    sample_n(size = m, replace = FALSE) %>%
+    ungroup()
+  
+  selected = rep(0, length(clusters))
+  selected[sampled$index] <- 1
+  
+  stratum_pik = data.frame(clust = clusters, strat = stratum) %>%
+    group_by(clust, strat) %>%
+    summarize(pik = (n / length(unique(clusters))) * (m / n()),
+              pi_I = (n / length(unique(clusters))),
+              pi_II = (m / n()))
+  
+  pik_list = left_join(threestage, stratum_pik,
+                       by = c("clusters" = "clust", "stratum" = "strat")) %>%
+    mutate(pik = pik * sum(selected) / sum(pik)) # pik does not always equal n, so scale
+  
+  return(list(pik = pik_list$pik, sampled = selected, m = m))
+}
+
+hi = three_stage_clust_strat(clusters = ce$STATE, stratum = ce$POPSIZE,
+                             n = 8, sample_size = 1000)
+hi$m
 ```
 
 
+
+## CE Simulation
+
+```{r, message = FALSE, warning = FALSE}
+n <- c(25, 50, 100, 500, 1000)
+methods <- c("grouping", "pps", "stratify", "cluster", "threestage")
+
+cases <- expand_grid(n, methods)
+
+set.seed(51483464)
+B = 5000
+
+columns = c("case", "iteration", "DD", "PN", "HP", "PS1", "PS1q", "PS2", "PS2q", 
+            "PS3", "WF", "LR")
+storage = data.frame(matrix(nrow = 0, ncol = length(columns)))
+colnames(storage) = columns
+
+for (case in 1:nrow(cases)) {
+  DD = PN = HP = PS1 = PS1q = PS2 = PS2q = PS3 = WF = LR = rep(NA, B)
+  case_storage = data.frame(iteration = seq_len(B), DD, PN, HP, PS1, PS1q,
+                            PS2, PS2q, PS3, WF, LR)
+  
+  for (b in 1:B) {
+
+    sampling = NULL
+    if (cases$methods[case] == "grouping") {
+      sampling = grouping(x = ce$TOTEXPCQ, n = cases$n[case], strata_prob = c(0.1, 0.15, 0.25, 0.5))
+    } 
+    if (cases$methods[case] == "pps") {
+      sampling = pps(x = ce$TOTEXPCQ, n = cases$n[case], noise_sd = 0.1)
+    } 
+    if (cases$methods[case] == "stratify") {
+      sampling = stratify(stratum = ce$REGION, nh = c(150, 150, 500, 200))
+    }
+    if (cases$methods[case] == "cluster") {
+      sampling = clustering(clusters = ce$CID, n = 25, m = cases$n[case] / 25)
+    }
+    if (cases$methods[case] == "threestage") {
+      sampling = three_stage_clust_strat(clusters = ce$STATE, stratum = ce$POPSIZE,
+                                         n = 7, sample_size = cases$n[case])
+    }
+    samp = ce[1:nrow(ce) * sampling$sample,] %>%
+      mutate(wts = 1 / sampling$pik[1:nrow(ce) * sampling$sample])
+    
+    case_storage$HP[b] = HP_DC_test(data = samp, y = samp$FINCBTAX, x = samp$TOTEXPCQ, wts = samp$wts)
+    case_storage$DD[b] = DD_WA_test(data = samp, y = samp$FINCBTAX, x = samp$TOTEXPCQ, wts = samp$wts)
+    case_storage$PS1[b] = PS1_WA_test(data = samp, y = samp$FINCBTAX, x = samp$TOTEXPCQ, wts = samp$wts)
+    case_storage$PS2[b] = PS2_WA_test(data = samp, y = samp$FINCBTAX, x = samp$TOTEXPCQ, wts = samp$wts)
+    case_storage$PS3[b] = PS3_test(data = samp, y = samp$FINCBTAX, x = samp$TOTEXPCQ, wts = samp$wts)
+    case_storage$WF[b] = WF_WA_test(data = samp, y = samp$FINCBTAX, x = samp$TOTEXPCQ, wts = samp$wts)
+    case_storage$PN[b] = PN_test(data = samp, y = samp$FINCBTAX, x = samp$TOTEXPCQ, wts = samp$wts)
+    case_storage$PS1q[b] = PS1q_WA_test(data = samp, y = samp$FINCBTAX, x = samp$TOTEXPCQ, wts = samp$wts)
+    case_storage$PS2q[b] = PS2q_WA_test(data = samp, y = samp$FINCBTAX, x = samp$TOTEXPCQ, wts = samp$wts)
+    case_storage$LR[b] = LR_test(data = samp, y = samp$FINCBTAX, x = samp$TOTEXPCQ, wts = samp$wts)
+    
+  }
+  storage = rbind(storage, cbind(case, case_storage))
+  print(case)
+}
+write.csv(storage, "ce_results.csv")
+```
+
+```{r}
+test_results = read.csv("ce_results.csv")
+
+test_reject = test_results %>%
+  mutate(HP = case_when(HP <= 0.05 ~ 1, TRUE ~ 0),
+         DD = case_when(DD <= 0.05 ~ 1, TRUE ~ 0),
+         PS1 = case_when(PS1 <= 0.05 ~ 1, TRUE ~ 0),
+         PS1q = case_when(PS1q <= 0.05 ~ 1, TRUE ~ 0),
+         PS2 = case_when(PS2 <= 0.05 ~ 1, TRUE ~ 0),
+         PS2q = case_when(PS2q <= 0.05 ~ 1, TRUE ~ 0),
+         PS3 = case_when(PS3 <= 0.05 ~ 1, TRUE ~ 0),
+         WF = case_when(WF <= 0.05 ~ 1, TRUE ~ 0),
+         LR = case_when(LR <= 0.05 ~ 1, TRUE ~ 0),
+         PN = case_when(PN <= 0.05 ~ 1, TRUE ~ 0)) %>%
+  select(-iteration) %>%
+  group_by(case) %>%
+  summarize(across(everything(), mean)) %>%
+  mutate(HP = format(round(HP * 100, 1), nsmall = 1),
+         DD = format(round(DD * 100, 1), nsmall = 1),
+         PS1 = format(round(PS1 * 100, 1), nsmall = 1),
+         PS1q = format(round(PS1q * 100, 1), nsmall = 1),
+         PS2 = format(round(PS2 * 100, 1), nsmall = 1),
+         PS2q = format(round(PS2q * 100, 1), nsmall = 1),
+         PS3 = format(round(PS3 * 100, 1), nsmall = 1),
+         WF = format(round(WF * 100, 1), nsmall = 1),
+         LR = format(round(LR * 100, 1), nsmall = 1),
+         PN = format(round(PN * 100, 1), nsmall = 1))
+
+test_reject_table = cbind(cases, test_reject) %>% select(-c(X, case))
+test_reject_table
+
+write.csv(test_reject_table, "ce_reject_table.csv")
+```
 
 
 
