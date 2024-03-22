@@ -20,10 +20,12 @@ First, we need to get to our population to sample from by filtering and doing a 
 ```{r}
 ce = rpms::CE %>%
   filter(SALARYX < 250000 & SALARYX > 0) %>%
-  filter(TOTEXPCQ > 0 & FINCBTAX > 10 & !is.na(REGION) & !is.na(STATE)) %>%
-  mutate(TOTEXPCQ = log(TOTEXPCQ), FINCBTAX = log(FINCBTAX)) %>%
+  filter(TOTEXPCQ > 0 & FINCBTAX > 10 & !is.na(REGION) & !is.na(STATE),
+         FAM_SIZE %in% factor(1:10), ROOMSQ %in% factor(1:11), NO_EARNR %in% factor(1:4)) %>%
+  mutate(TOTEXPCQ = log(TOTEXPCQ), FINCBTAX = log(FINCBTAX),
+         REG_POP = paste0(REGION, "_", POPSIZE)) %>%
   select(-c(QINTRVMO, PSU, INCNONWK, IRAX, LIQUIDX, STOCKX, STUDNTX,
-            FOOTWRCQ, TOBACCCQ, TOTXEST, VEHQL))
+            FOOTWRCQ, TOBACCCQ, TOTXEST, VEHQL, EARNER))
 
 ce = ce %>%
   group_by(CID) %>%
@@ -38,8 +40,8 @@ ce = ce %>%
   mutate(STATE = droplevels(STATE))
 
 ce = ce %>%
-  group_by(STATE, POPSIZE) %>%
-  filter(n() >= 50) %>%
+  group_by(REGION, MARITAL) %>%
+  filter(n() >= 70) %>%
   ungroup()
   
 
@@ -56,7 +58,7 @@ ggplot(ce, aes(x = TOTEXPCQ, y = FINCBTAX)) +
 
 ```{r}
 grouping <- function(x, n, strata_prob) {
-  N_h = length(nh) # Number of stratum
+  N_h = length(strata_prob) # Number of stratum
   quantiles <- quantile(x, probs = seq(0, 1, 1 / N_h), na.rm = TRUE)
   groups <- cut(x, breaks = quantiles, labels = FALSE, include.lowest = TRUE)
   pik = inclusionprobastrata(strata = groups,
@@ -111,7 +113,7 @@ pps <- function(x, n, noise_sd) {
   selected = UPbrewer(pik)
   return(list(pik = pik, sample = selected))
 }
-welp = pps(x = ce$FINCBTAX, n = 1000, noise_sd = 0.1)
+welp = pps(x = exp(ce$TOTEXPCQ), n = 1000, noise_sd = 0.075)
 ```
 
 ### Two-stage Stratification (STSRS) 
@@ -119,14 +121,12 @@ welp = pps(x = ce$FINCBTAX, n = 1000, noise_sd = 0.1)
 ```{r}
 stratify <- function(stratum, nh) {
   pik = inclusionprobastrata(as.numeric(stratum), nh)
-  
   sampled <- rep(0, length(stratum))
   for (s in levels(as.factor(stratum))) {
     indices <- which(stratum == s)
     selected <- UPbrewer(pik[indices])
     sampled[indices * selected] <- 1
   }
-  
   return(list(pik = pik, sampled = sampled))
 }
 welp = stratify(stratum = ce$REGION, nh = c(150, 150, 500, 200))
@@ -156,7 +156,7 @@ clustering <- function(clusters, n, m) {
   return(list(pik = pik_list$pik, sampled = sampled))
 }
 
-hi = clustering(clusters = ce$CID, n = 25, m = 1)
+hi = clustering(clusters = ce$INCOMEY, n = 2, m = 500 / 2)
 sum(hi$sampled)
 ```
 
@@ -164,9 +164,11 @@ sum(hi$sampled)
 
 ```{r, message = FALSE}
 three_stage_clust_strat <- function(clusters, stratum, n, sample_size) {
-  selected_clusters <- sample(x = unique(clusters), size = n, replace = FALSE)
+  selected_clusters = sample(x = unique(clusters), size = n, replace = FALSE)
   clust_indices = which(clusters %in% selected_clusters)
   stratum_in_clust = paste0(clusters[clust_indices], "_", stratum[clust_indices])
+  threestage = data.frame(clusters = clusters, stratum = stratum,
+                          index = 1:length(clusters))
   
   m = round(sample_size / length(unique(stratum_in_clust)), 0)
   sampled = threestage %>%
@@ -180,20 +182,17 @@ three_stage_clust_strat <- function(clusters, stratum, n, sample_size) {
   
   stratum_pik = data.frame(clust = clusters, strat = stratum) %>%
     group_by(clust, strat) %>%
-    summarize(pik = (n / length(unique(clusters))) * (m / n()),
-              pi_I = (n / length(unique(clusters))),
-              pi_II = (m / n()))
+    summarize(pik = (n / length(unique(clusters))) * (m / n()))
   
   pik_list = left_join(threestage, stratum_pik,
                        by = c("clusters" = "clust", "stratum" = "strat")) %>%
     mutate(pik = pik * sum(selected) / sum(pik)) # pik does not always equal n, so scale
   
-  return(list(pik = pik_list$pik, sampled = selected, m = m))
+  return(list(pik = pik_list$pik, sampled = selected))
 }
 
-hi = three_stage_clust_strat(clusters = ce$STATE, stratum = ce$POPSIZE,
-                             n = 8, sample_size = 1000)
-hi$m
+hi = three_stage_clust_strat(clusters = ce$REGION, stratum = ce$MARITAL,
+                             n = 3, sample_size = 1000)
 ```
 
 
@@ -201,13 +200,14 @@ hi$m
 ## CE Simulation
 
 ```{r, message = FALSE, warning = FALSE}
-n <- c(25, 50, 100, 500, 1000)
+set.seed(51483464)
+n <- c(50, 100, 250, 500, 1000)
 methods <- c("grouping", "pps", "stratify", "cluster", "threestage")
 
-cases <- expand_grid(n, methods)
+cases <- expand_grid(methods, n)
 
 set.seed(51483464)
-B = 5000
+B = 1000
 
 columns = c("case", "iteration", "DD", "PN", "HP", "PS1", "PS1q", "PS2", "PS2q", 
             "PS3", "WF", "LR")
@@ -222,21 +222,23 @@ for (case in 1:nrow(cases)) {
   for (b in 1:B) {
 
     sampling = NULL
-    if (cases$methods[case] == "grouping") {
-      sampling = grouping(x = ce$TOTEXPCQ, n = cases$n[case], strata_prob = c(0.1, 0.15, 0.25, 0.5))
+    if (cases$methods[case] == "grouping") { # Bad
+      sampling = grouping(x = ce$TOTEXPCQ, n = cases$n[case], strata_prob = c(0.05, 0.15, 0.20, 0.6))
     } 
-    if (cases$methods[case] == "pps") {
-      sampling = pps(x = ce$TOTEXPCQ, n = cases$n[case], noise_sd = 0.1)
+    if (cases$methods[case] == "pps") { # Decent - converges only with some tests
+      sampling = pps(x = ce$TOTEXPCQ, n = cases$n[case], noise_sd = 0.025)
     } 
-    if (cases$methods[case] == "stratify") {
-      sampling = stratify(stratum = ce$REGION, nh = c(150, 150, 500, 200))
+    if (cases$methods[case] == "stratify") { # Good
+      sampling = stratify(stratum = ce$NO_EARNR, nh = round(cases$n[case] * c(0.4, 0.35, 0.15, 0.10)))
     }
-    if (cases$methods[case] == "cluster") {
-      sampling = clustering(clusters = ce$CID, n = 25, m = cases$n[case] / 25)
+    if (cases$methods[case] == "cluster") { # Good
+      #n = ifelse(cases$n[case] %in% c(50, 100), 2, 3) # Increase m per n
+      sampling = clustering(clusters = ce$INCOMEY, n = 3, m = cases$n[case] / 3)
     }
-    if (cases$methods[case] == "threestage") {
-      sampling = three_stage_clust_strat(clusters = ce$STATE, stratum = ce$POPSIZE,
-                                         n = 7, sample_size = cases$n[case])
+    if (cases$methods[case] == "threestage") { # Very good!
+      n = ifelse(cases$n[case] %in% c(50, 100), 2, 3) # Increase n_I per M
+      sampling = three_stage_clust_strat(clusters = ce$REGION, stratum = ce$MARITAL,
+                                         n = n, sample_size = cases$n[case])
     }
     samp = ce[1:nrow(ce) * sampling$sample,] %>%
       mutate(wts = 1 / sampling$pik[1:nrow(ce) * sampling$sample])
@@ -287,17 +289,121 @@ test_reject = test_results %>%
          LR = format(round(LR * 100, 1), nsmall = 1),
          PN = format(round(PN * 100, 1), nsmall = 1))
 
-test_reject_table = cbind(cases, test_reject) %>% select(-c(X, case))
+test_reject_table = cbind(cases, test_reject) %>% select(-c(X, case, PN, LR))
 test_reject_table
 
 write.csv(test_reject_table, "ce_reject_table.csv")
 ```
 
+### Miscellanous Computations
+
+```{r}
+HP_DC_test(data = ce, y = ce$FINCBTAX, x = ce$TOTEXPCQ, wts = ce$FINLWT21)
+DD_WA_test(data = ce, y = ce$FINCBTAX, x = ce$TOTEXPCQ, wts = ce$FINLWT21)
+PS1_WA_test(data = ce, y = ce$FINCBTAX, x = ce$TOTEXPCQ, wts = ce$FINLWT21)
+PS2_WA_test(data = ce, y = ce$FINCBTAX, x = ce$TOTEXPCQ, wts = ce$FINLWT21)
+PS3_test(data = ce, y = ce$FINCBTAX, x = ce$TOTEXPCQ, wts = ce$FINLWT21)
+WF_WA_test(data = ce, y = ce$FINCBTAX, x = ce$TOTEXPCQ, wts = ce$FINLWT21)
+#PN_test(data = ce, y = ce$FINCBTAX, x = ce$TOTEXPCQ, wts = ce$FINLWT21)
+PS1q_WA_test(data = ce, y = ce$FINCBTAX, x = ce$TOTEXPCQ, wts = ce$FINLWT21)
+PS2q_WA_test(data = ce, y = ce$FINCBTAX, x = ce$TOTEXPCQ, wts = ce$FINLWT21)
+#LR_test(data = ce, y = ce$FINCBTAX, x = ce$TOTEXPCQ, wts = ce$FINLWT21)
+```
+
+```{r}
+ce %>%
+  mutate(quantiles = ntile(TOTEXPCQ, 10), TOTEXPCQ = exp(TOTEXPCQ), FINCBTAX = exp(FINCBTAX)) %>%
+  group_by(quantiles) %>%
+  summarize(est = mean(FINCBTAX), sd = sd(FINCBTAX), count = n())
+```
+
+```{r, fig.width = 10, fig.height = 10}
+library(reshape2)
+library(bbplot)
+library(scales)
+library(ggthemes)
+
+ce_melted_strat = ce %>%
+  select(FINCBTAX, #POPSIZE, BLS_URBN,
+         NO_EARNR, MARITAL, FAM_SIZE, ROOMSQ) %>%
+  mutate(FINCBTAX = exp(FINCBTAX)) %>%
+  melt(., id.vars = "FINCBTAX")
+
+label_names = c("NO_EARNR" = "Number of Earners", "MARITAL" = "Martial Status",
+                "FAM_SIZE" = "Family Size", "ROOMSQ" = "Number of Rooms")
+
+ggplot(ce_melted_strat, aes(y = FINCBTAX, x = factor(value, levels = as.character(1:11)), fill = factor(variable))) + 
+  geom_boxplot() + 
+  facet_wrap(~variable, ncol = 2, nrow = 2, scales = "free_x", strip.position = "top",
+             labeller = as_labeller(label_names)) + 
+  theme_hc() +
+  scale_y_continuous(labels = unit_format(unit = "k", scale = 1e-3)) + 
+  labs(y = "Total CU Income") + #, title = "Spread of CU Total Income by Earner Characteristics") + 
+  theme(text = element_text(size = 20, family = "Palatino"),
+        legend.position = "none", 
+        axis.title.x = element_blank(),
+        strip.background.x = element_blank(),
+        axis.text.x = element_text(vjust = 6, size = 15),
+        axis.ticks = element_blank(),
+        axis.title.y = element_blank())
+ggsave("ce_strat.png")
+```
+
+```{r, fig.height= 10, fig.width= 10}
+ce_melted_clust = ce %>%
+  select(FINCBTAX, MEMBRACE, INCOMEY, REGION, POPSIZE) %>%
+  mutate(FINCBTAX = exp(FINCBTAX)) %>%
+  melt(., id.vars = "FINCBTAX")
+
+label_names = c("MEMBRACE" = "Race of Earner", "INCOMEY" = "Type of Earner's Employment",
+                "REGION" = "U.S. Region Code", "POPSIZE" = "Population Size Class")
+
+ggplot(ce_melted_clust, aes(y = FINCBTAX, x = factor(value, levels = as.character(1:6)), fill = factor(variable))) + 
+  geom_boxplot() + 
+  facet_wrap(~variable, ncol = 2, nrow = 2, scales = "free_x", strip.position = "top",
+             labeller = as_labeller(label_names)) + 
+  theme_hc() +
+  scale_y_continuous(labels = unit_format(unit = "k", scale = 1e-3)) + 
+  labs(y = "Total CU Income") + #, title = "Spread of CU Total Income by Earner Characteristics") + 
+  theme(text = element_text(size = 20, family = "Palatino"),
+        legend.position = "none", 
+        axis.title.x = element_blank(),
+        strip.background.x = element_blank(),
+        axis.text.x = element_text(vjust = 6, size = 14),
+        axis.ticks = element_blank(),
+        axis.title.y = element_blank())
+ggsave("ce_clust.png")
+```
+
+```{r}
+ggplot(mutate(ce, REG_POP = paste0(REGION, "_", POPSIZE)), aes(x = factor(REG_POP), y = exp(FINCBTAX))) + 
+  geom_boxplot()
+
+ce %>% group_by(REGION, MARITAL) %>% summarise(count = n())
+
+ggplot(ce, aes(x = factor(OCCUCODE), y = exp(FINCBTAX))) + 
+  geom_boxplot()
+```
+
+```{r}
+ce %>%
+  mutate(quantiles = ntile(FINCBTAX, 10), TOTEXPCQ = exp(TOTEXPCQ), FINCBTAX = exp(FINCBTAX)) %>%
+  group_by(quantiles) %>%
+  summarize()
 
 
+cor(ce$FINLWT21, exp(ce$FINCBTAX))
+cor(ce$FINLWT21, exp(ce$TOTEXPCQ))
 
 
+v = ce$HEALTHCQ
+cor(exp(ce$FINCBTAX), v)
+cor(exp(ce$TOTEXPCQ), v)
 
+cor(exp(ce$TOTEXPCQ), exp(ce$FINCBTAX))
+
+
+```
 
 
 

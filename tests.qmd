@@ -87,7 +87,7 @@ generate_sample_poisson_suspicious = function(data, w, n, rescale = FALSE) {
   choosen = as.numeric(runif(length(w), 0, (1 / n) * sum(w)) < w)
   samp = cbind(data, choosen) %>%
     filter(choosen == 1) %>%
-    select(-choosen) # Redefine from pi to weights w
+    select(-choosen)
   if (rescale == TRUE) mutate(samp, w = w / sum(w))
   return(samp)
 }
@@ -486,42 +486,42 @@ PN_test = function(data, y, x, wts, est_split = 0.5) {
 }
 PN_test(data = samp, y = samp$y, x = samp$x, wts = samp$w, est_split = 0.7)
 
-PN_test_new = function(data, y, x, wts, est_split = 0.5) {
-  
-}
-PN_test_new(data = samp, y = samp$y, x = samp$x, wts = samp$w, est_split = 0.7)
-
-
-
-y = samp$y
-x = samp$x
-wts = samp$w
-data = samp
-index = sample(1:nrow(data), floor(est_split * length(x)))
-  
-# Unweighted Regression
-X = cbind(1, x[index])
-betas_u = solve(t(X) %*% X) %*% t(X) %*% y[index]
-y_val_u = cbind(1, x[-index]) %*% betas_u
-v_u = y[-index] - y_val_u
-  
-# Weighted Regression 
-W = diag(wts[index])
-betas_w = solve(t(X) %*% W %*% X) %*% t(X) %*% W %*% y[index]
-y_val_w = cbind(1, x[-index]) %*% betas_w
-v_w = y[-index] - y_val_w
-
-# Standard Z-test
-D = v_u^2 - v_w^2
-Z = (mean(D) - 0) / (sd(D) / sqrt(length(y)))
-p_value = 2 * pnorm(abs(Z), lower.tail = FALSE)
-p_value
-
-
-lmw = lm(y ~ x, data = samp[-index,], weights = w)
-lmo = lm(y ~ x, data = samp[-index,])
-
-print(v_w)
+# PN_test_new = function(data, y, x, wts, est_split = 0.5) {
+#   
+# }
+# PN_test_new(data = samp, y = samp$y, x = samp$x, wts = samp$w, est_split = 0.7)
+# 
+# 
+# 
+# y = samp$y
+# x = samp$x
+# wts = samp$w
+# data = samp
+# index = sample(1:nrow(data), floor(est_split * length(x)))
+#   
+# # Unweighted Regression
+# X = cbind(1, x[index])
+# betas_u = solve(t(X) %*% X) %*% t(X) %*% y[index]
+# y_val_u = cbind(1, x[-index]) %*% betas_u
+# v_u = y[-index] - y_val_u
+#   
+# # Weighted Regression 
+# W = diag(wts[index])
+# betas_w = solve(t(X) %*% W %*% X) %*% t(X) %*% W %*% y[index]
+# y_val_w = cbind(1, x[-index]) %*% betas_w
+# v_w = y[-index] - y_val_w
+# 
+# # Standard Z-test
+# D = v_u^2 - v_w^2
+# Z = (mean(D) - 0) / (sd(D) / sqrt(length(y)))
+# p_value = 2 * pnorm(abs(Z), lower.tail = FALSE)
+# p_value
+# 
+# 
+# lmw = lm(y ~ x, data = samp[-index,], weights = w)
+# lmo = lm(y ~ x, data = samp[-index,])
+# 
+# print(v_w)
 ```
 
 
@@ -1055,6 +1055,88 @@ write.csv(reject_table, "recent_sim3_large.csv")
 ```
 
 ## Suspicion
+
+### Study 2
+
+```{r}
+set.seed(51483464)
+B = 1000 # 1000
+
+N <- 3000
+n <- c(100, 200)
+sigma <- c(0.1)
+alpha <- c(0, 0.5, 1.0, 1.5)
+cases <- expand_grid(N, n, sigma, alpha)
+
+columns = c("case", "iteration", "DD", "PN", "HP", "PS1", "PS1q", "PS2", "PS2q", 
+            "PS3", "WF", "LR")
+results = data.frame(matrix(nrow = 0, ncol = length(columns)))
+colnames(results) = columns
+
+for (case in 1:nrow(cases)) {
+  DD = PN = HP = PS1 = PS1q = PS2 = PS2q = PS3 = WF = LR = rep(NA, B)
+  case_storage = data.frame(iteration = seq_len(B), DD, PN, HP, PS1, PS1q,
+                            PS2, PS2q, PS3, WF, LR)
+  for (b in 1:B) {
+    pop = generate_data_study2(N = cases$N[case],
+                               sigma = cases$sigma[case],
+                               alpha = cases$alpha[case])
+    samp = generate_sample_brewer_suspicious(pop, w = pop$w, n = cases$n[case])
+    
+    case_storage$DD[b] = DD_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
+    case_storage$PN[b] = PN_test(data = samp, y = samp$y, x = samp$x, wts = samp$w, est_split = 0.5)
+    case_storage$HP[b] = HP_DC_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
+    case_storage$PS1[b] = PS1_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
+    case_storage$PS1q[b] = PS1q_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
+    case_storage$PS2[b] = PS2_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
+    case_storage$PS2q[b] = PS2q_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
+    case_storage$PS3[b] = PS3_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
+    case_storage$WF[b] = WF_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
+    case_storage$LR[b] = LR_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
+  }
+  
+  results = rbind(results, cbind(case, case_storage))
+  print(case)
+}
+write.csv(results, "st2_suspicious.csv")
+```
+
+```{r}
+results = read.csv("st2_suspicious.csv")
+
+reject = results %>%
+  mutate(HP = case_when(HP <= 0.05 ~ 1, TRUE ~ 0),
+         DD = case_when(DD <= 0.05 ~ 1, TRUE ~ 0),
+         PS1 = case_when(PS1 <= 0.05 ~ 1, TRUE ~ 0),
+         PS1q = case_when(PS1q <= 0.05 ~ 1, TRUE ~ 0),
+         PS2 = case_when(PS2 <= 0.05 ~ 1, TRUE ~ 0),
+         PS2q = case_when(PS2q <= 0.05 ~ 1, TRUE ~ 0),
+         PS3 = case_when(PS3 <= 0.05 ~ 1, TRUE ~ 0),
+         WF = case_when(WF <= 0.05 ~ 1, TRUE ~ 0),
+         LR = case_when(LR <= 0.05 ~ 1, TRUE ~ 0),
+         PN = case_when(PN <= 0.05 ~ 1, TRUE ~ 0)) %>%
+  select(-iteration) %>%
+  group_by(case) %>%
+  summarize(across(everything(), mean)) %>%
+  mutate(HP = format(round(HP * 100, 1), nsmall = 1),
+         DD = format(round(DD * 100, 1), nsmall = 1),
+         PS1 = format(round(PS1 * 100, 1), nsmall = 1),
+         PS1q = format(round(PS1q * 100, 1), nsmall = 1),
+         PS2 = format(round(PS2 * 100, 1), nsmall = 1),
+         PS2q = format(round(PS2q * 100, 1), nsmall = 1),
+         PS3 = format(round(PS3 * 100, 1), nsmall = 1),
+         WF = format(round(WF * 100, 1), nsmall = 1),
+         LR = format(round(LR * 100, 1), nsmall = 1),
+         PN = format(round(PN * 100, 1), nsmall = 1))
+
+reject_table = cbind(cases, reject) %>% select(-c(N, case))
+reject_table
+
+write.csv(reject_table, "suspicious_sim2.csv")
+```
+
+
+### Study 3
 
 ```{r}
 set.seed(51483464)
