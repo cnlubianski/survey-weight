@@ -206,37 +206,35 @@ They propose a simple modification by regressing $W$ on the first two moments an
 
 ```{r}
 PS1_WA_test = function(data, y, x, wts) {
-  W = wts
-  
   X = cbind(1, x)
   betas_u = solve(t(X) %*% X) %*% t(X) %*% y
   
   y_hat = X %*% betas_u
   residuals = y - y_hat
-  residuals_diag = diag(x = as.vector(residuals), ncol = length(residuals), nrow = length(residuals))
+  residuals_diag = diag(as.vector(residuals))
   
   # Create Full Model
   E = residuals
   E_sq = residuals^2
   X_tilde = residuals_diag %*% x
   X_design = cbind(1, x, E, E_sq, X_tilde)
-  betas_full = solve(t(X_design) %*% X_design) %*% t(X_design) %*% W
+  betas_full = solve(t(X_design) %*% X_design) %*% t(X_design) %*% wts
   W_hat_full = X_design %*% betas_full
-  RSS_full = sum((W - W_hat_full)^2)
+  RSS_full = sum((wts - W_hat_full)^2)
   
   # Create Reduced Model
   X_reduced = cbind(1, x)
-  betas_reduced = solve(t(X_reduced) %*% X_reduced) %*% t(X_reduced) %*% W
+  betas_reduced = solve(t(X_reduced) %*% X_reduced) %*% t(X_reduced) %*% wts
   W_hat_reduced = X_reduced %*% betas_reduced
-  RSS_reduced = sum((W - W_hat_reduced)^2)
+  RSS_reduced = sum((wts - W_hat_reduced)^2)
   
   # F-test
   F_statistic = ((RSS_reduced - RSS_full) /
                    (length(betas_full) - length(betas_reduced))) /
-      (RSS_full / (length(W) - length(betas_full)))
+      (RSS_full / (length(wts) - length(betas_full)))
     p_value = 1 - pf(F_statistic,
                      df1 = length(betas_full) - length(betas_reduced),
-                     df2 = length(W) - length(betas_full))
+                     df2 = length(wts) - length(betas_full))
   return(p_value)
 }
 
@@ -245,14 +243,12 @@ PS1_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
 
 ```{r}
 PS1q_WA_test = function(data, y, x, wts) {
-  W = wts
-  
   X = cbind(1, x)
   betas_u = solve(t(X) %*% X) %*% t(X) %*% y
   
   y_hat = X %*% betas_u
   residuals = y - y_hat
-  residuals_diag = diag(x = as.vector(residuals), ncol = length(residuals), nrow = length(residuals))
+  residuals_diag = diag(as.vector(residuals))
   
   # Create Full Model
   X_sq = x^2
@@ -260,23 +256,23 @@ PS1q_WA_test = function(data, y, x, wts) {
   E_sq = residuals^2
   X_tilde = residuals_diag %*% x
   X_design = cbind(1, x, X_sq, E, E_sq, X_tilde)
-  betas_full = solve(t(X_design) %*% X_design) %*% t(X_design) %*% W
+  betas_full = solve(t(X_design) %*% X_design) %*% t(X_design) %*% wts
   W_hat_full = X_design %*% betas_full
-  RSS_full = sum((W - W_hat_full)^2)
+  RSS_full = sum((wts - W_hat_full)^2)
   
   # Create Reduced Model
   X_reduced = cbind(1, x)
-  betas_reduced = solve(t(X_reduced) %*% X_reduced) %*% t(X_reduced) %*% W
+  betas_reduced = solve(t(X_reduced) %*% X_reduced) %*% t(X_reduced) %*% wts
   W_hat_reduced = X_reduced %*% betas_reduced
-  RSS_reduced = sum((W - W_hat_reduced)^2)
+  RSS_reduced = sum((wts - W_hat_reduced)^2)
   
   # F-test
   F_statistic = ((RSS_reduced - RSS_full) /
                    (length(betas_full) - length(betas_reduced))) /
-      (RSS_full / (length(W) - length(betas_full)))
+      (RSS_full / (length(wts) - length(betas_full)))
     p_value = 1 - pf(F_statistic,
                      df1 = length(betas_full) - length(betas_reduced),
-                     df2 = length(W) - length(betas_full))
+                     df2 = length(wts) - length(betas_full))
   return(p_value)
 }
 
@@ -641,98 +637,7 @@ confint_test(data = samp, y = samp$y, x = samp$x, wts = samp$w, alpha = 0.10)
 
 
 
-### Permutation
 
-<!---- TO-DO: Determine how to efficiently calculate permutation statistic ---->
-```{r, include = FALSE, eval = FALSE}
-weight_perm_test <- function(y, x, w, B) {
-  stat_stor = rep(NA, B)
-  data = data.frame(x = x, y = y, w = w)
-  # Permutating
-  for (b in 1:B) {
-    shuffled_w = sample(w)
-    b_data = data.frame(y = y, x = x, w = shuffled_w, id = length(w))
-    
-    # Unweighted Regression
-    unweighted = lm(y ~ x, data = b_data)
-    beta_u = unweighted$coefficients[2] # faster to manually calculate beta_1
-    #beta_u = sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x))^2)
-    
-    # Weighted Regression
-    design = svydesign(id = ~1, weights = ~w, fpc = ~rep(N, nrow(b_data)),
-                       data = b_data)
-    weighted = svyglm(y ~ x, design = design)
-    beta_w = weighted$coefficients[2]
-    
-    stat_stor[b] = beta_w - beta_u
-  }
-  
-  # Estimating test statistic
-  act_betau = lm(y ~ x, data = data)$coefficients[2]
-  
-  act_design = svydesign(id = ~1, weights = ~w, fpc = ~rep(N, nrow(data)),
-                       data = data)
-  act_betaw = svyglm(y ~ x, design = act_design)$coefficients[2]
-  est_stat = act_betaw - act_betau
-  
-  # Calculating p-value
-  dist = ecdf(stat_stor)
-  p = dist(est_stat)
-  pvalue = 2 * min(p, 1 - p)
-  
-  # return list for distribution and p-value
-  return(pvalue)
-}
-
-weight_perm_test = function(data, y, x, wts, B) {
-  
-}
-B = 1000
-stat_stor = rep(NA, B)
-
-data = samp
-
-for (b in 1:B) {
-  b_data = mutate(data, w = sample(w))
-  
-  # Unweighted Regression
-  X = cbind(1, b_data$x)
-  Y = b_data$y
-  betas_u = solve(t(X) %*% X) %*% t(X) %*% Y
-  
-  # Weighted Regression
-  W = diag(x = b_data$w)
-  betas_w = solve(t(X) %*% W %*% X) %*% t(X) %*% W %*% Y
-  
-  stat_stor[b] = betas_w[2] - betas_u[2]
-}
-
-# Calculating Test Statistic
-# Unweighted Regression
-X = cbind(1, data$x)
-Y = data$y
-betas_u = solve(t(X) %*% X) %*% t(X) %*% Y
-
-# Weighted Regression
-W = diag(x = data$w)
-betas_w = solve(t(X) %*% W %*% X) %*% t(X) %*% W %*% Y
-  
-est_stat = betas_w[2] - betas_u[2]
-
-# Calculating p-value
-dist = ecdf(stat_stor)
-p = dist(est_stat)
-p_value = 2 * min(p, 1 - p)
-p_value
-
-
-# hist(stat_stor)
-p_value <- sum(abs(stat_stor) >= abs(est_stat)) / length(stat_stor)
-p_value
-
-
-hist(stat_stor)
-```
 
 
 # Simulation 

@@ -1,0 +1,300 @@
+---
+title: "Proposed Permutation Tests"
+format: pdf
+editor: visual
+---
+
+## Set-up
+
+```{r, message = FALSE, warning = FALSE}
+if (!require(tidyverse)) install.packages("tidyverse"); library(tidyverse)
+if (!require(rpms)) install.packages("rpms"); library(rpms)
+if (!require(sampling)) install.packages("sampling"); library(sampling)
+if (!require(survey)) install.packages("survey"); library(survey)
+```
+
+## Sampling
+
+```{r}
+generate_data_study1_perm = function(N, sigma, alpha, delta) {
+  X <- runif(N, 0, 1)
+  u <- runif(N, 0, 1)
+  epsilon <- rnorm(N, 0, sd = sigma)
+  
+  Y <- 5 * X + epsilon
+  w <- alpha * Y + 0.3 * X + delta * u
+  data = data.frame(y = Y, x = X, w)
+  return(data)
+}
+
+generate_data_study2 = function(N, sigma, alpha) {
+  X <- runif(N, 0, 1)
+  u <- runif(N, 0, 1)
+  epsilon <- rnorm(N, 0, sd = sigma)
+  
+  Y <- 1 + X + epsilon
+  w <- alpha * (Y - 1.5 * alpha)^2 + 0.3 * X - 0.3 * X^2 + u
+  data = data.frame(y = Y, x = X, w)
+  return(data)
+}
+
+generate_data_study3 = function(N, alpha, psi) {
+  X <- rnorm(N, 0, sd = sqrt(0.5))
+  epsilon <- rnorm(N, 0, sd = sqrt(0.5))
+  z <- rnorm(N, 0, sd = sqrt(0.5))
+  beta = 2 - alpha
+  
+  eta = function(x) {
+    ifelse(x < 0.2, 0.025,
+               ifelse(0.2 <= x & x <= 1.2, 0.475 * (x - 0.2) + 0.025,
+               0.5))
+  }
+  
+  Y <- 0.5 + X + epsilon
+  w <- alpha * eta(X) + beta * eta(psi * epsilon + (1 - psi) * z)
+  data = data.frame(y = Y, x = X, w)
+  return(data)
+}
+
+generate_sample_brewer = function(data, w, n, rescale = FALSE) {
+  pik = inclusionprobabilities(w, n)
+  choosen = UPbrewer(pik)
+  samp = data[1:nrow(data) * choosen,] %>%
+    mutate(w = 1 / pik[1:nrow(data) * choosen])
+  if (rescale == TRUE) mutate(samp, w = w / sum(w))
+  return(samp)
+}
+
+generate_sample_poisson = function(data, w, n, rescale = FALSE) {
+  choosen = as.numeric(runif(length(w), 0, (1 / n) * sum(w)) < w)
+  samp = cbind(data, choosen) %>%
+    filter(choosen == 1) %>%
+    select(-choosen) %>%
+    mutate(w = 1 / w) # Redefine from pi to weights w
+  if (rescale == TRUE) mutate(samp, w = w / sum(w))
+  return(samp)
+}
+
+generate_sample_poisson_suspicious = function(data, w, n, rescale = FALSE) {
+  choosen = as.numeric(runif(length(w), 0, (1 / n) * sum(w)) < w)
+  samp = cbind(data, choosen) %>%
+    filter(choosen == 1) %>%
+    select(-choosen)
+  if (rescale == TRUE) mutate(samp, w = w / sum(w))
+  return(samp)
+}
+
+generate_sample_brewer_suspicious = function(data, w, n, rescale = FALSE) {
+  pik = inclusionprobabilities(w, n)
+  choosen = UPbrewer(pik)
+  samp = data[1:nrow(data) * choosen,]
+  if (rescale == TRUE) mutate(samp, w = w / sum(w))
+  return(samp)
+}
+```
+
+```{r}
+N <- 3000
+n <- c(100, 200)
+sigma <- c(0.1, 0.2)
+alpha <- c(0.0, 0.2, 0.4, 0.6)
+delta <- c(1.5, 1.0)
+
+cases <- expand_grid(N, n, sigma, delta, alpha)
+
+m = 32
+pop = generate_data_study1_perm(N = cases$N[m],
+                           sigma = cases$sigma[m],
+                           alpha = cases$alpha[m],
+                           delta = cases$delta[m])
+
+# Keeping all units to test out the test code
+samp = generate_sample_brewer(data = pop,
+                              w = pop$w, 
+                              n = 1000, #cases$n[m], #nrow(pop) / 2,
+                              rescale = FALSE) #cases$n[m])
+
+#samp = pop %>%
+#  mutate(w = 1 / inclusionprobabilities(w, nrow(pop) / 2)) %>%
+#  sample_n(size = 1500)
+```
+
+## Permutation 1: DC Test using HP variation
+
+```{r}
+perm_HP <- function(y, x, wts, B = 1000) {
+  stat_stor = rep(NA, B)
+  for (b in 1:B) {
+    wts_b = sample(wts, replace = FALSE)
+    
+    X = cbind(1, x) # Unweighted
+    betas_u = solve(t(X) %*% X) %*% t(X) %*% y
+    
+    W = diag(wts_b) # Weighted
+    betas_w = solve(t(X) %*% W %*% X) %*% t(X) %*% W %*% y
+    
+    stat_stor[b] = betas_w[2] - betas_u[2]
+  }
+  
+  # Actual estimates
+  X = cbind(1, x)
+  betas_u = solve(t(X) %*% X) %*% t(X) %*% y
+  
+  W = diag(wts)
+  betas_w = solve(t(X) %*% W %*% X) %*% t(X) %*% W %*% y
+  
+  est_stat = betas_w[2] - betas_u[2]
+  
+  # Calculating p-value
+  dist = ecdf(stat_stor)
+  p = dist(est_stat)
+  p_value = 2 * min(p, 1 - p)
+  return(p_value)
+}
+
+perm_HP(y = samp$y, x = samp$x, wts = samp$w, B = 1000)
+```
+
+
+## Permutation 2: WA Test using DD variation
+
+```{r}
+perm_DD <- function(y, x, wts, B = 1000) {
+  stat_stor = rep(NA, B)
+
+  for (b in 1:B) {
+    wts_b = sample(wts, replace = FALSE)
+    
+    X = cbind(1, x)
+    W = diag(wts_b)
+    X_tilde = W %*% X
+    X_comb = cbind(X, X_tilde)
+    betas_comb = solve(t(X_comb) %*% X_comb) %*% t(X_comb) %*% y
+    stat_stor[b] = betas_comb[4]
+  }
+  
+  X = cbind(1, x)
+  W = diag(x = wts, ncol = length(wts), nrow = length(wts))
+  X_tilde = W %*% X
+  X_comb = cbind(X, X_tilde)
+  
+  betas_comb = solve(t(X_comb) %*% X_comb) %*% t(X_comb) %*% y
+  est_stat = betas_comb[4]
+  est_stat
+  
+  dist = ecdf(stat_stor)
+  p = dist(est_stat)
+  p_value = 2 * min(p, 1 - p)
+  return(p_value)
+}
+
+perm_DD(y = samp$y, x = samp$x, wts = samp$w, B = 1000)
+```
+
+
+## Permutation 3: WA Test using correlations
+
+```{r}
+perm_PS1 <- function(y, x, wts, B = 1000) {
+  stat_stor = rep(NA, B)
+  
+  for (b in 1:B) {
+    wts_b = sample(wts, replace = FALSE)
+    
+    X = cbind(1, x)
+    betas_u = solve(t(X) %*% X) %*% t(X) %*% y
+    residuals = y - X %*% betas_u
+    stat_stor[b] = cor(residuals, wts_b)
+  }
+  
+  X = cbind(1, x)
+  betas_u = solve(t(X) %*% X) %*% t(X) %*% y
+  residuals = y - X %*% betas_u
+  est_stat = cor(residuals, wts)
+  
+  dist = ecdf(stat_stor)
+  p = dist(est_stat)
+  p_value = 2 * min(p, 1 - p)
+  return(p_value)
+}
+
+perm_PS1(y = samp$y, x = samp$x, wts = samp$w, B = 1000)
+```
+
+
+
+# Simulation
+
+```{r, message = FALSE, warning = FALSE}
+set.seed(51483464)
+B = 100
+
+N <- 3000
+n <- c(100, 250, 500)
+sigma <- c(0.1, 0.2)
+alpha <- c(0, 0.3, 0.6)
+delta <- c(1.5, 1)
+cases <- expand_grid(N, n, sigma, delta, alpha)
+
+columns = c("case", "iteration", "perm_HP", "perm_DD", "perm_PS1") ###
+mini_results = data.frame(matrix(nrow = 0, ncol = length(columns)))
+colnames(mini_results) = columns
+
+for (case in 1:nrow(cases)) {
+  p_HP = p_DD = p_PS1 = rep(NA, B) ###
+  case_storage = data.frame(iteration = seq_len(B), p_HP, p_DD, p_PS1) ###
+  for (b in 1:B) {
+    pop = generate_data_study1_perm(N = cases$N[case],
+                               sigma = cases$sigma[case],
+                               alpha = cases$alpha[case],
+                               delta = cases$delta[case])
+    samp = generate_sample_brewer(pop, w = pop$w, n = cases$n[case])
+    
+    case_storage$p_HP[b] = perm_HP(y = samp$y, x = samp$x, wts = samp$w, B = 10)
+    case_storage$p_DD[b] = perm_DD(y = samp$y, x = samp$x, wts = samp$w, B = 10)
+    case_storage$p_PS1[b] = perm_PS1(y = samp$y, x = samp$x, wts = samp$w, B = 10)
+  }
+  
+  mini_results = rbind(mini_results, cbind(case, case_storage))
+  print(case)
+}
+
+reject_mini = mini_results %>% ###
+  mutate(p_HP = case_when(p_HP <= 0.05 ~ 1, TRUE ~ 0),
+         p_DD = case_when(p_DD <= 0.05 ~ 1, TRUE ~ 0),
+         p_PS1 = case_when(p_PS1 <= 0.05 ~ 1, TRUE ~ 0)) %>%
+  select(-iteration) %>%
+  group_by(case) %>%
+  summarize(across(everything(), mean)) %>%
+  mutate(p_HP = format(round(p_HP * 100, 1), nsmall = 1),
+         p_DD = format(round(p_DD * 100, 1), nsmall = 1),
+         p_PS1 = format(round(p_PS1 * 100, 1), nsmall = 1))
+
+reject_mini_table = cbind(cases, reject_mini) %>% select(-c(N, case))
+reject_mini_table
+
+write.csv(reject_mini_table, "perm_sim.csv")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
