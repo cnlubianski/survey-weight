@@ -110,7 +110,7 @@ delta <- c(1.0, 1.5)
 
 cases <- expand_grid(N, n, sigma, delta, alpha)
 
-m = 1
+m = 32
 pop = generate_data_study1(N = cases$N[m],
                            sigma = cases$sigma[m],
                            alpha = cases$alpha[m],
@@ -119,7 +119,7 @@ pop = generate_data_study1(N = cases$N[m],
 # Keeping all units to test out the test code
 samp = generate_sample_brewer(data = pop,
                               w = pop$w, 
-                              n = cases$n[m], #nrow(pop) / 2,
+                              n = 1500, #cases$n[m], #nrow(pop) / 2,
                               rescale = FALSE) #cases$n[m])
 
 #samp = pop %>%
@@ -486,42 +486,38 @@ PN_test = function(data, y, x, wts, est_split = 0.5) {
 }
 PN_test(data = samp, y = samp$y, x = samp$x, wts = samp$w, est_split = 0.7)
 
-# PN_test_new = function(data, y, x, wts, est_split = 0.5) {
-#   
-# }
-# PN_test_new(data = samp, y = samp$y, x = samp$x, wts = samp$w, est_split = 0.7)
-# 
-# 
-# 
-# y = samp$y
-# x = samp$x
-# wts = samp$w
-# data = samp
-# index = sample(1:nrow(data), floor(est_split * length(x)))
-#   
-# # Unweighted Regression
-# X = cbind(1, x[index])
-# betas_u = solve(t(X) %*% X) %*% t(X) %*% y[index]
-# y_val_u = cbind(1, x[-index]) %*% betas_u
-# v_u = y[-index] - y_val_u
-#   
-# # Weighted Regression 
-# W = diag(wts[index])
-# betas_w = solve(t(X) %*% W %*% X) %*% t(X) %*% W %*% y[index]
-# y_val_w = cbind(1, x[-index]) %*% betas_w
-# v_w = y[-index] - y_val_w
-# 
-# # Standard Z-test
-# D = v_u^2 - v_w^2
-# Z = (mean(D) - 0) / (sd(D) / sqrt(length(y)))
-# p_value = 2 * pnorm(abs(Z), lower.tail = FALSE)
-# p_value
-# 
-# 
-# lmw = lm(y ~ x, data = samp[-index,], weights = w)
-# lmo = lm(y ~ x, data = samp[-index,])
-# 
-# print(v_w)
+PN_test_new = function(data, y, x, wts, est_split = 0.5) {
+
+}
+PN_test_new(data = samp, y = samp$y, x = samp$x, wts = samp$w, est_split = 0.7)
+
+
+est_split = 0.7
+y = samp$y
+x = samp$x
+wts = samp$w
+data = samp
+index = sample(1:nrow(data), floor(est_split * length(x)))
+
+# Unweighted Regression
+X = cbind(1, x[index])
+betas_u = solve(t(X) %*% X) %*% t(X) %*% y[index]
+y_val_u = cbind(1, x[-index]) %*% betas_u
+v_u = y[-index] - y_val_u
+
+# Weighted Regression
+W = diag(wts[index])
+betas_w = solve(t(X) %*% W %*% X) %*% t(X) %*% W %*% y[index]
+y_val_w = cbind(1, x[-index]) %*% betas_w
+v_w = y[-index] - y_val_w
+
+# Standard Z-test
+D = v_u^2 - v_w^2
+Z = (mean(D) - 0) / (sd(D) / sqrt(length(D)))
+p_value = 2 * pnorm(abs(Z), lower.tail = FALSE)
+p_value
+
+t.test(D)
 ```
 
 
@@ -691,7 +687,7 @@ weight_perm_test <- function(y, x, w, B) {
 weight_perm_test = function(data, y, x, wts, B) {
   
 }
-B = 100
+B = 1000
 stat_stor = rep(NA, B)
 
 data = samp
@@ -1222,7 +1218,7 @@ write.csv(reject_table, "suspicious_sim3.csv")
 
 ```{r}
 set.seed(51483464)
-B = 1000
+B = 50
 
 N <- 3000
 n <- c(100, 200)
@@ -1231,13 +1227,13 @@ alpha <- c(0, 0.2, 0.4, 0.6)
 delta <- c(1.5, 1)
 cases <- expand_grid(N, n, sigma, delta, alpha)
 
-columns = c("case", "iteration", "PN", "PN_new") ###
+columns = c("case", "iteration", "CI", "CI_new") ###
 mini_results = data.frame(matrix(nrow = 0, ncol = length(columns)))
 colnames(mini_results) = columns
 
 for (case in 1:nrow(cases)) {
-  PN = PN_new = rep(NA, B) ###
-  case_storage = data.frame(iteration = seq_len(B), PN, PN_new) ###
+  CI = CI_new = rep(NA, B) ###
+  case_storage = data.frame(iteration = seq_len(B), CI, CI_new) ###
   for (b in 1:B) {
     pop = generate_data_study1(N = cases$N[case],
                                sigma = cases$sigma[case],
@@ -1245,8 +1241,8 @@ for (case in 1:nrow(cases)) {
                                delta = cases$delta[case])
     samp = generate_sample_brewer(pop, w = pop$w, n = cases$n[case])
     
-    case_storage$PN[b] = PN_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
-    case_storage$PN_new[b] = PN_test_new(data = samp, y = samp$y, x = samp$x, wts = samp$w)
+    case_storage$CI[b] = confint_test(data = samp, y = 100 * samp$y, x = 100 * samp$x, wts = samp$w)
+    case_storage$CI_new[b] = confint_test_new(data = samp, y = 100 * samp$y, x = 100 * samp$x, wts = samp$w)
     
     ###
     #case_storage$PN50[b] = PN_test(data = samp, y = samp$y, x = samp$x, wts = samp$w, est_split = 0.5)
@@ -1259,8 +1255,8 @@ for (case in 1:nrow(cases)) {
 }
 
 reject_mini = mini_results %>% ###
-  mutate(PN = case_when(PN <= 0.05 ~ 1, TRUE ~ 0),
-         PN_new = case_when(PN_new <= 0.05 ~ 1, TRUE ~ 0)) %>%
+  mutate(CI = case_when(CI <= 0.05 ~ 1, TRUE ~ 0),
+         CI_new = case_when(CI_new <= 0.05 ~ 1, TRUE ~ 0)) %>%
   select(-iteration) %>%
   group_by(case) %>%
   summarize(across(everything(), mean))

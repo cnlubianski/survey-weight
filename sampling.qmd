@@ -19,33 +19,18 @@ First, we need to get to our population to sample from by filtering and doing a 
 
 ```{r}
 ce = rpms::CE %>%
-  filter(SALARYX < 250000 & SALARYX > 0) %>%
-  filter(TOTEXPCQ > 0 & FINCBTAX > 10 & !is.na(REGION) & !is.na(STATE),
+  filter(TOTEXPCQ > 0, FINCBTAX > 10, SALARYX > 0, !is.na(REGION), 
          FAM_SIZE %in% factor(1:10), ROOMSQ %in% factor(1:11), NO_EARNR %in% factor(1:4)) %>%
-  mutate(TOTEXPCQ = log(TOTEXPCQ), FINCBTAX = log(FINCBTAX),
-         REG_POP = paste0(REGION, "_", POPSIZE)) %>%
+  mutate(TOTEXPCQ = log(TOTEXPCQ), FINCBTAX = log(FINCBTAX)) %>% #,
+         #REG_POP = paste0(REGION, "_", POPSIZE)) %>%
   select(-c(QINTRVMO, PSU, INCNONWK, IRAX, LIQUIDX, STOCKX, STUDNTX,
-            FOOTWRCQ, TOBACCCQ, TOTXEST, VEHQL, EARNER))
-
-ce = ce %>%
-  group_by(CID) %>%
-  filter(n() >= 50) %>%
-  ungroup() %>%
-  mutate(CID = droplevels(CID))
-
-ce = ce %>%
-  group_by(STATE) %>%
-  filter(n() >= 50) %>%
-  ungroup() %>%
-  mutate(STATE = droplevels(STATE))
-
-ce = ce %>%
+            FOOTWRCQ, TOBACCCQ, TOTXEST, VEHQL, EARNER)) %>%
   group_by(REGION, MARITAL) %>%
   filter(n() >= 70) %>%
   ungroup()
-  
+```
 
-
+```{r}
 ggplot(ce, aes(x = TOTEXPCQ, y = FINCBTAX)) + 
   geom_point(alpha = 0.05, aes(size = FINLWT21)) + 
   geom_smooth(method = "lm", color = "blue") + 
@@ -64,7 +49,7 @@ grouping <- function(x, n, strata_prob) {
   pik = inclusionprobastrata(strata = groups,
                            nh = ceiling(sample_size * strata_prob))
   selected = UPbrewer(pik)
-  return(list(pik = pik, sample = selected))
+  return(list(pik = pik, sampled = selected))
 }
 
 sample_size = 100
@@ -111,7 +96,7 @@ pps <- function(x, n, noise_sd) {
   x_noisy = x * (1 + noise)
   pik = inclusionprobabilities(x_noisy, n)
   selected = UPbrewer(pik)
-  return(list(pik = pik, sample = selected))
+  return(list(pik = pik, sampled = selected))
 }
 welp = pps(x = exp(ce$TOTEXPCQ), n = 1000, noise_sd = 0.075)
 ```
@@ -202,12 +187,12 @@ hi = three_stage_clust_strat(clusters = ce$REGION, stratum = ce$MARITAL,
 ```{r, message = FALSE, warning = FALSE}
 set.seed(51483464)
 n <- c(50, 100, 250, 500, 1000)
-methods <- c("grouping", "pps", "stratify", "cluster", "threestage")
+methods <- c("grouping", "pps", "stratify", "cluster", "twostage")
 
 cases <- expand_grid(methods, n)
 
 set.seed(51483464)
-B = 1000
+B = 5000
 
 columns = c("case", "iteration", "DD", "PN", "HP", "PS1", "PS1q", "PS2", "PS2q", 
             "PS3", "WF", "LR")
@@ -223,7 +208,7 @@ for (case in 1:nrow(cases)) {
 
     sampling = NULL
     if (cases$methods[case] == "grouping") { # Bad
-      sampling = grouping(x = ce$TOTEXPCQ, n = cases$n[case], strata_prob = c(0.05, 0.15, 0.20, 0.6))
+      sampling = grouping(x = ce$TOTEXPCQ, n = cases$n[case], strata_prob = c(0.15, 0.2, 0.25, 0.4))
     } 
     if (cases$methods[case] == "pps") { # Decent - converges only with some tests
       sampling = pps(x = ce$TOTEXPCQ, n = cases$n[case], noise_sd = 0.025)
@@ -235,7 +220,7 @@ for (case in 1:nrow(cases)) {
       #n = ifelse(cases$n[case] %in% c(50, 100), 2, 3) # Increase m per n
       sampling = clustering(clusters = ce$INCOMEY, n = 3, m = cases$n[case] / 3)
     }
-    if (cases$methods[case] == "threestage") { # Very good!
+    if (cases$methods[case] == "twostage") { # Very good!
       n = ifelse(cases$n[case] %in% c(50, 100), 2, 3) # Increase n_I per M
       sampling = three_stage_clust_strat(clusters = ce$REGION, stratum = ce$MARITAL,
                                          n = n, sample_size = cases$n[case])
@@ -292,7 +277,8 @@ test_reject = test_results %>%
 test_reject_table = cbind(cases, test_reject) %>% select(-c(X, case, PN, LR))
 test_reject_table
 
-write.csv(test_reject_table, "ce_reject_table.csv")
+#write.csv(test_reject_table, "ce_reject_table.csv")
+write.csv(test_reject_table, "ce_reject_table_large.csv")
 ```
 
 ### Miscellanous Computations
@@ -390,29 +376,106 @@ ce %>%
   mutate(quantiles = ntile(FINCBTAX, 10), TOTEXPCQ = exp(TOTEXPCQ), FINCBTAX = exp(FINCBTAX)) %>%
   group_by(quantiles) %>%
   summarize()
-
-
-cor(ce$FINLWT21, exp(ce$FINCBTAX))
-cor(ce$FINLWT21, exp(ce$TOTEXPCQ))
-
-
-v = ce$HEALTHCQ
-cor(exp(ce$FINCBTAX), v)
-cor(exp(ce$TOTEXPCQ), v)
-
-cor(exp(ce$TOTEXPCQ), exp(ce$FINCBTAX))
-
-
 ```
 
+```{r,fig.height= 10, fig.width= 10}
+group50 = grouping(x = ce$TOTEXPCQ, n = 50, strata_prob = c(0.05, 0.15, 0.20, 0.6))
+pps50 = pps(x = ce$TOTEXPCQ, n = 50, noise_sd = 0.025)
+strat50 = stratify(stratum = ce$NO_EARNR, nh = round(50 * c(0.4, 0.35, 0.15, 0.10)))
+clust50 = clustering(clusters = ce$INCOMEY, n = 3, m = 50 / 3)
+twostage50 = three_stage_clust_strat(clusters = ce$REGION, stratum = ce$MARITAL,
+                                         n = 2, sample_size = 50)
+
+group100 = grouping(x = ce$TOTEXPCQ, n = 100, strata_prob = c(0.05, 0.15, 0.20, 0.6))
+pps100 = pps(x = ce$TOTEXPCQ, n = 100, noise_sd = 0.025)
+strat100 = stratify(stratum = ce$NO_EARNR, nh = round(100 * c(0.4, 0.35, 0.15, 0.10)))
+clust100 = clustering(clusters = ce$INCOMEY, n = 3, m = 100 / 3)
+twostage100 = three_stage_clust_strat(clusters = ce$REGION, stratum = ce$MARITAL,
+                                         n = 2, sample_size = 100)
+
+group1000 = grouping(x = ce$TOTEXPCQ, n = 1000, strata_prob = c(0.05, 0.15, 0.20, 0.6))
+pps1000 = pps(x = ce$TOTEXPCQ, n = 1000, noise_sd = 0.025)
+strat1000 = stratify(stratum = ce$NO_EARNR, nh = round(1000 * c(0.4, 0.35, 0.15, 0.10)))
+clust1000 = clustering(clusters = ce$INCOMEY, n = 3, m = 1000 / 3)
+twostage1000 = three_stage_clust_strat(clusters = ce$REGION, stratum = ce$MARITAL,
+                                         n = 3, sample_size = 1000)
+
+columns = c("wt", "method", "size")
+weidist = data.frame(matrix(nrow = 0, ncol = length(columns)))
+colnames(weidist) = columns
+
+g50 = cbind(1 / group50$pik[1:length(group50$pik) * group50$sampled], "Grouping", "fifty")
+p50 = cbind(1 / pps50$pik[1:length(pps50$pik) * pps50$sampled], "PPS", "fifty")
+s50 = cbind(1 / strat50$pik[1:length(strat50$pik) * strat50$sampled], "Stratifying", "fifty")
+c50 = cbind(1 / clust50$pik[1:length(clust50$pik) * clust50$sampled], "Clustering", "fifty")
+t50 = cbind(1 / twostage50$pik[1:length(twostage50$pik) * twostage50$sampled], "Two Stage", "fifty")
+
+# g50 = cbind(1 / group100$pik[1:length(group100$pik) * group100$sampled], "Grouping", "50")
+# p50 = cbind(1 / pps100$pik[1:length(pps100$pik) * pps100$sampled], "PPS", "50")
+# s50 = cbind(1 / strat100$pik[1:length(strat100$pik) * strat100$sampled], "Stratifying", "50")
+# c50 = cbind(1 / clust100$pik[1:length(clust100$pik) * clust100$sampled], "Clustering", "50")
+# t50 = cbind(1 / twostage100$pik[1:length(twostage100$pik) * twostage100$sampled], "Two Stage", "50")
+
+g1000 = cbind(1 / group1000$pik[1:length(group1000$pik) * group1000$sampled], "Grouping", "thousand")
+p1000 = cbind(1 / pps1000$pik[1:length(pps1000$pik) * pps1000$sampled], "PPS", "thousand")
+s1000 = cbind(1 / strat1000$pik[1:length(strat1000$pik) * strat1000$sampled], "Stratifying", "thousand")
+c1000 = cbind(1 / clust1000$pik[1:length(clust1000$pik) * clust1000$sampled], "Clustering", "thousand")
+t1000 = cbind(1 / twostage1000$pik[1:length(twostage1000$pik) * twostage1000$sampled], "Two Stage", "thousand")
+
+
+# g50 = cbind(group50$pik, "Grouping", "50")
+# p50 = cbind(pps50$pik, "PPS", "50")
+# s50 = cbind(strat50$pik, "Stratifying", "50")
+# c50 = cbind(clust50$pik, "Clustering", "50")
+# t50 = cbind(twostage50$pik, "Two Stage", "50")
+# 
+# g1000 = cbind(group1000$pik, "Grouping", "1000")
+# p1000 = cbind(pps1000$pik, "PPS", "1000")
+# s1000 = cbind(strat1000$pik, "Stratifying", "1000")
+# c1000 = cbind(clust1000$pik, "Clustering", "1000")
+# t1000 = cbind(twostage1000$pik, "Two Stage", "1000")
 
 
 
+weidist = rbind(weidist, #g50, p50, s50, c50, t50,
+                g1000, p1000, s1000, c1000, t1000) #, cbind(nrow(ce) / 1000, "SRS", "thousand"))
+colnames(weidist) = columns
+
+# ggplot(weidist, aes(x = as.numeric(wt))) + 
+#   geom_histogram() + 
+#   facet_grid(rows = vars(method), cols = vars(size), scales = "free")
 
 
+label_names = c("Clustering_fifty" = "Clustering, 50",
+                "Grouping_fifty" = "Grouping, 50",
+                "PPS_fifty" = "PPS, 50",
+                "Stratifying_fifty" = "Stratifying, 50",
+                "Two Stage_fifty" = "Two Stage, 50",
+                "Clustering_thousand" = "Clustering, 1000",
+                "Grouping_thousand" = "Grouping, 1000",
+                "PPS_thousand" = "PPS, 1000",
+                "Stratifying_thousand" = "Stratifying, 1000",
+                "Two Stage_thousand" = "Two Stage, 1000")
 
+weidist1 = weidist %>%
+  mutate(agg = paste0(method, "_", size))
 
+ggplot(weidist1, aes(x = as.numeric(wt), fill = agg)) + 
+  geom_histogram(aes(y = after_stat(count / sum(count)), binwidth = after_stat(2 * IQR(as.numeric(x)) / (count^(1/3))))) + 
+  facet_wrap(~agg, ncol = 2,scales = "free", strip.position = "top", 
+             labeller = as_labeller(label_names)) + 
+  theme_hc() + 
+  scale_fill_manual(values = c("#E69F00", "#56B4E9", "#009E73", "#0072B2", "#D55E00", "#CC79A7")) + 
+  #labs(x = "Weights") + 
+  theme(text = element_text(size = 17, family = "Palatino"),
+        legend.position = "none", 
+        axis.title.x = element_blank(),
+        strip.background.x = element_blank(),
+        #axis.text.x = element_text(vjust = 6, size = 14),
+        #axis.ticks = element_blank(),
+        axis.title.y = element_blank())
+ggsave("ce_weit.png")
 
-
+```
 
 
