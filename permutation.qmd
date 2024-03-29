@@ -21,7 +21,7 @@ generate_data_study1_perm = function(N, sigma, alpha, delta) {
   u <- runif(N, 0, 1)
   epsilon <- rnorm(N, 0, sd = sigma)
   
-  Y <- 5 * X + epsilon
+  Y <- 1 + X + epsilon
   w <- alpha * Y + 0.3 * X + delta * u
   data = data.frame(y = Y, x = X, w)
   return(data)
@@ -124,31 +124,25 @@ samp = generate_sample_brewer(data = pop,
 ```{r}
 perm_HP <- function(y, x, wts, B = 1000) {
   stat_stor = rep(NA, B)
+  X = cbind(1, x)
+  
   for (b in 1:B) {
     wts_b = sample(wts, replace = FALSE)
-    
-    X = cbind(1, x) # Unweighted
+    W = diag(wts_b)
     betas_u = solve(t(X) %*% X) %*% t(X) %*% y
-    
-    W = diag(wts_b) # Weighted
     betas_w = solve(t(X) %*% W %*% X) %*% t(X) %*% W %*% y
-    
     stat_stor[b] = betas_w[2] - betas_u[2]
   }
   
   # Actual estimates
-  X = cbind(1, x)
-  betas_u = solve(t(X) %*% X) %*% t(X) %*% y
-  
   W = diag(wts)
+  betas_u = solve(t(X) %*% X) %*% t(X) %*% y
   betas_w = solve(t(X) %*% W %*% X) %*% t(X) %*% W %*% y
-  
   est_stat = betas_w[2] - betas_u[2]
   
   # Calculating p-value
-  dist = ecdf(stat_stor)
-  p = dist(est_stat)
-  p_value = 2 * min(p, 1 - p)
+  p_o = mean(ifelse(stat_stor >= est_stat, 1, 0))
+  p_value = 2 * min(p_o, 1 - p_o)
   return(p_value)
 }
 
@@ -161,11 +155,11 @@ perm_HP(y = samp$y, x = samp$x, wts = samp$w, B = 1000)
 ```{r}
 perm_DD <- function(y, x, wts, B = 1000) {
   stat_stor = rep(NA, B)
+  X = cbind(1, x)
 
   for (b in 1:B) {
     wts_b = sample(wts, replace = FALSE)
     
-    X = cbind(1, x)
     W = diag(wts_b)
     X_tilde = W %*% X
     X_comb = cbind(X, X_tilde)
@@ -173,18 +167,14 @@ perm_DD <- function(y, x, wts, B = 1000) {
     stat_stor[b] = betas_comb[4]
   }
   
-  X = cbind(1, x)
-  W = diag(x = wts, ncol = length(wts), nrow = length(wts))
+  W = diag(wts)
   X_tilde = W %*% X
   X_comb = cbind(X, X_tilde)
-  
   betas_comb = solve(t(X_comb) %*% X_comb) %*% t(X_comb) %*% y
   est_stat = betas_comb[4]
-  est_stat
   
-  dist = ecdf(stat_stor)
-  p = dist(est_stat)
-  p_value = 2 * min(p, 1 - p)
+  p_o = mean(ifelse(stat_stor >= est_stat, 1, 0))
+  p_value = 2 * min(p_o, 1 - p_o)
   return(p_value)
 }
 
@@ -197,24 +187,21 @@ perm_DD(y = samp$y, x = samp$x, wts = samp$w, B = 1000)
 ```{r}
 perm_PS1 <- function(y, x, wts, B = 1000) {
   stat_stor = rep(NA, B)
+  X = cbind(1, x)
   
   for (b in 1:B) {
     wts_b = sample(wts, replace = FALSE)
-    
-    X = cbind(1, x)
     betas_u = solve(t(X) %*% X) %*% t(X) %*% y
     residuals = y - X %*% betas_u
     stat_stor[b] = cor(residuals, wts_b)
   }
-  
-  X = cbind(1, x)
+
   betas_u = solve(t(X) %*% X) %*% t(X) %*% y
   residuals = y - X %*% betas_u
   est_stat = cor(residuals, wts)
   
-  dist = ecdf(stat_stor)
-  p = dist(est_stat)
-  p_value = 2 * min(p, 1 - p)
+  p_o = mean(ifelse(stat_stor >= rep(est_stat, B), 1, 0))
+  p_value = 2 * min(p_o, 1 - p_o)
   return(p_value)
 }
 
@@ -222,60 +209,245 @@ perm_PS1(y = samp$y, x = samp$x, wts = samp$w, B = 1000)
 ```
 
 
+## Permutation 4 - RMSE
+
+```{r}
+RMSE = function(y, yhat){
+  SSE = sum((y - yhat)^2)
+  return(sqrt(SSE / length(y)))  
+}
+
+perm_RMSE <- function(y, x, wts, B = 1000) {
+  stat_stor = rep(NA, B)
+  X = cbind(1, x)
+  
+  for (b in 1:B) {
+    wts_b = sample(wts, replace = FALSE)
+    W = diag(wts_b)
+    betas_u = solve(t(X) %*% X) %*% t(X) %*% y
+    betas_w = solve(t(X) %*% W %*% X) %*% t(X) %*% W %*% y
+    stat_stor[b] = RMSE(y, X %*% betas_u) - RMSE(y, X %*% betas_w)
+  }
+  
+  # Actual estimates
+  W = diag(wts)
+  betas_u = solve(t(X) %*% X) %*% t(X) %*% y
+  betas_w = solve(t(X) %*% W %*% X) %*% t(X) %*% W %*% y
+  est_stat = RMSE(y, X %*% betas_u) - RMSE(y, X %*% betas_w)
+  
+  # Calculating p-value
+  p_o = mean(ifelse(stat_stor >= est_stat, 1, 0))
+  p_value = 2 * min(p_o, 1 - p_o)
+  return(p_value)
+}
+
+perm_RMSE(y = samp$y, x = samp$x, wts = samp$w, B = 100)
+```
+
+
+## Permutation 5 - PN variation
+
+```{r, warning = FALSE}
+perm_PN <- function(data, y, x, wts, B = 1000, est_split = 0.7) {
+  stat_stor = rep(NA, B)
+  index = sample(1:nrow(data), floor(est_split * length(x)))
+  
+  for (b in 1:B) {
+    index_b = sample(1:nrow(data), floor(est_split * length(x)))
+  
+    # Unweighted Regression
+    X = cbind(1, x[index_b])
+    betas_u = solve(t(X) %*% X) %*% t(X) %*% y[index_b]
+    y_val_u = cbind(1, x[-index_b]) %*% betas_u
+    v_u = y[-index_b] - y_val_u
+      
+    # Weighted Regression 
+    W = diag(wts[index_b])
+    betas_w = solve(t(X) %*% W %*% X) %*% t(X) %*% W %*% y[index_b]
+    y_val_w = cbind(1, x[-index_b]) %*% betas_w
+    v_w = y[-index_b] - y_val_w
+    
+    stat_stor[b] = mean(v_u^2 - v_w^2)
+  }
+  X = cbind(1, x[index])
+  betas_u = solve(t(X) %*% X) %*% t(X) %*% y[index]
+  y_val_u = cbind(1, x[-index]) %*% betas_u
+  v_u = y[-index] - y_val_u
+    
+  # Weighted Regression 
+  W = diag(wts[index])
+  betas_w = solve(t(X) %*% W %*% X) %*% t(X) %*% W %*% y[index]
+  y_val_w = cbind(1, x[-index]) %*% betas_w
+  v_w = y[-index] - y_val_w
+  
+  # Standard Z-test
+  est_stat = mean(v_u^2 - v_w^2)
+  p_o = mean(ifelse(stat_stor >= rep(est_stat, B), 1, 0))
+  p_value = 2 * min(p_o, 1 - p_o)
+  return(p_value)
+}
+
+perm_PN(data = samp, y = samp$y, x = samp$x, wts = samp$w, B = 1000)
+```
+
+
+## Permutation 6 - Mean Ratio
+
+```{r}
+perm_PS2 <- function(y, x, wts, B = 1000) {
+  stat_stor = rep(NA, B)
+  XY_design = cbind(1, x, y)
+
+  for (b in 1:B) {
+    wts_b = sample(wts, replace = FALSE)
+    betas = solve(t(XY_design) %*% XY_design) %*% t(XY_design) %*% wts_b
+    stat_stor[b] = betas[3]
+  }
+  
+  betas = solve(t(XY_design) %*% XY_design) %*% t(XY_design) %*% wts
+  est_stat = betas[3]
+  p_o = mean(ifelse(stat_stor >= rep(est_stat, B), 1, 0))
+  p_value = 2 * min(p_o, 1 - p_o)
+  return(p_value)
+  #return(list(p = p_value, stat = stat_stor, est = est_stat))
+}
+hi = perm_PS2(y = samp$y, x = samp$x, wts = samp$w, B = 1000)
+
+hist(hi$stat)
+abline(v = hi$est)
+```
+
+
+
+
+
+
+
 
 # Simulation
 
 ```{r, message = FALSE, warning = FALSE}
 set.seed(51483464)
-B = 100
+B = 1000
 
 N <- 3000
-n <- c(100, 250, 500)
-sigma <- c(0.1, 0.2)
-alpha <- c(0, 0.3, 0.6)
-delta <- c(1.5, 1)
+n <- c(25, 50, 75, 100)
+sigma <- 0.1 #c(0.1, 0.2)
+alpha <- c(0, 0.2, 0.4, 0.6)
+delta <- 1 # c(1.5, 1)
 cases <- expand_grid(N, n, sigma, delta, alpha)
 
-columns = c("case", "iteration", "perm_HP", "perm_DD", "perm_PS1") ###
+columns = c("case", "iteration", "perm_HP", "HP", "perm_DD", "DD",
+            "perm_PS1", "PS1", "p_PS2", "PS2") ###
 mini_results = data.frame(matrix(nrow = 0, ncol = length(columns)))
 colnames(mini_results) = columns
 
 for (case in 1:nrow(cases)) {
-  p_HP = p_DD = p_PS1 = rep(NA, B) ###
-  case_storage = data.frame(iteration = seq_len(B), p_HP, p_DD, p_PS1) ###
+  p_HP = HP = p_DD = DD = p_PS1 = PS1 = p_PS2 = PS2 = rep(NA, B) ###
+  case_storage = data.frame(iteration = seq_len(B), p_HP, HP, p_DD, DD, p_PS1, PS1, p_PS2, PS2) ###
   for (b in 1:B) {
-    pop = generate_data_study1_perm(N = cases$N[case],
+    pop = generate_data_study1_perm(N = cases$N[case], 
                                sigma = cases$sigma[case],
                                alpha = cases$alpha[case],
                                delta = cases$delta[case])
     samp = generate_sample_brewer(pop, w = pop$w, n = cases$n[case])
     
-    case_storage$p_HP[b] = perm_HP(y = samp$y, x = samp$x, wts = samp$w, B = 10)
-    case_storage$p_DD[b] = perm_DD(y = samp$y, x = samp$x, wts = samp$w, B = 10)
-    case_storage$p_PS1[b] = perm_PS1(y = samp$y, x = samp$x, wts = samp$w, B = 10)
+    case_storage$p_HP[b] = perm_HP(y = samp$y, x = samp$x, wts = samp$w, B = 1000)
+    case_storage$HP[b] = HP_DC_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
+    case_storage$p_DD[b] = perm_DD(y = samp$y, x = samp$x, wts = samp$w, B = 1000)
+    case_storage$DD[b] = DD_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
+    case_storage$p_PS1[b] = perm_PS1(y = samp$y, x = samp$x, wts = samp$w, B = 1000)
+    case_storage$PS1[b] = PS1_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
+    case_storage$p_PS2[b] = perm_PS2(y = samp$y, x = samp$x, wts = samp$w, B = 1000)
+    case_storage$PS2[b] = PS2_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
   }
   
   mini_results = rbind(mini_results, cbind(case, case_storage))
   print(case)
 }
 
+write.csv(mini_results, "perm_sim.csv")
+```
+
+```{r}
 reject_mini = mini_results %>% ###
   mutate(p_HP = case_when(p_HP <= 0.05 ~ 1, TRUE ~ 0),
+         HP = case_when(HP <= 0.05 ~ 1, TRUE ~ 0),
          p_DD = case_when(p_DD <= 0.05 ~ 1, TRUE ~ 0),
-         p_PS1 = case_when(p_PS1 <= 0.05 ~ 1, TRUE ~ 0)) %>%
+         DD = case_when(DD <= 0.05 ~ 1, TRUE ~ 0),
+         p_PS1 = case_when(p_PS1 <= 0.05 ~ 1, TRUE ~ 0),
+         PS1 = case_when(PS1 <= 0.05 ~ 1, TRUE ~ 0),
+         p_PS2 = case_when(p_PS2 <= 0.05 ~ 1, TRUE ~ 0),
+         PS2 = case_when(PS2 <= 0.05 ~ 1, TRUE ~ 0)) %>%
   select(-iteration) %>%
   group_by(case) %>%
   summarize(across(everything(), mean)) %>%
   mutate(p_HP = format(round(p_HP * 100, 1), nsmall = 1),
+         HP = format(round(HP * 100, 1), nsmall = 1),
          p_DD = format(round(p_DD * 100, 1), nsmall = 1),
-         p_PS1 = format(round(p_PS1 * 100, 1), nsmall = 1))
+         DD = format(round(DD * 100, 1), nsmall = 1),
+         p_PS1 = format(round(p_PS1 * 100, 1), nsmall = 1),
+         PS1 = format(round(PS1 * 100, 1), nsmall = 1),
+         p_PS2 = format(round(p_PS2 * 100, 1), nsmall = 1),
+         PS2 = format(round(PS2 * 100, 1), nsmall = 1))
 
-reject_mini_table = cbind(cases, reject_mini) %>% select(-c(N, case))
+reject_mini_table = cbind(cases, reject_mini) %>% select(-c(N, case, delta))
 reject_mini_table
 
-write.csv(reject_mini_table, "perm_sim.csv")
+# write.csv(reject_mini_table, "perm_table.csv")
 ```
 
+
+### Other 
+
+
+```{r, message = FALSE, warning = FALSE}
+set.seed(51483464)
+B = 100
+
+N <- 3000
+n <- c(25, 50, 100)
+sigma <- 0.15 #c(0.1, 0.2)
+alpha <- c(0, 0.3, 0.6)
+delta <- c(1)
+cases <- expand_grid(N, n, sigma, delta, alpha)
+
+columns = c("case", "iteration", "p_PS2", "PS2") ###
+mini_results = data.frame(matrix(nrow = 0, ncol = length(columns)))
+colnames(mini_results) = columns
+
+for (case in 1:nrow(cases)) {
+  p_PS2 = PS2 = rep(NA, B) ###
+  case_storage = data.frame(iteration = seq_len(B), p_PS2, PS2) ###
+  for (b in 1:B) {
+    pop = generate_data_study1_perm(N = cases$N[case], 
+                               sigma = cases$sigma[case],
+                               alpha = cases$alpha[case],
+                               delta = cases$delta[case])
+    samp = generate_sample_brewer(pop, w = pop$w, n = cases$n[case])
+    
+    case_storage$p_PS2[b] = perm_PS2(y = samp$y, x = samp$x, wts = samp$w, B = 1000)
+    case_storage$PS2[b] = PS2_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
+  }
+  
+  mini_results = rbind(mini_results, cbind(case, case_storage))
+  print(case) 
+}
+
+reject_mini = mini_results %>% ###
+  mutate(p_PS2 = case_when(p_PS2 <= 0.05 ~ 1, TRUE ~ 0),
+         PS2 = case_when(PS2 <= 0.05 ~ 1, TRUE ~ 0)) %>%
+  select(-iteration) %>%
+  group_by(case) %>%
+  summarize(across(everything(), mean)) %>%
+  mutate(p_PS2 = format(round(p_PS2 * 100, 1), nsmall = 1),
+         PS2 = format(round(PS2 * 100, 1), nsmall = 1))
+
+reject_mini_table = cbind(cases, reject_mini) %>% select(-c(N, case, delta))
+reject_mini_table
+
+#write.csv(reject_mini_table, "perm_sim.csv")
+```
 
 
 

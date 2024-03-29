@@ -1,0 +1,168 @@
+---
+title: "Generalized Linear Model Test"
+format: pdf
+editor: visual
+---
+
+## Set-up
+
+```{r, message = FALSE, warning = FALSE}
+if (!require(tidyverse)) install.packages("tidyverse"); library(tidyverse)
+if (!require(rpms)) install.packages("rpms"); library(rpms)
+if (!require(sampling)) install.packages("sampling"); library(sampling)
+if (!require(survey)) install.packages("survey"); library(survey)
+```
+
+## Sampling
+
+```{r}
+generate_data_study_glm = function(N, sigma, alpha, delta) {
+  X <- runif(N, 0, 1)
+  u <- runif(N, 0, 1)
+  epsilon <- rnorm(N, 0, sd = sigma)
+  
+  Y <- rbinom(N, size = 1, prob = plogis(1 + X + epsilon))
+  # threshold <- runif(1, min = mean(Y_cont) - sqrt(3) * sd(Y_cont),
+  #                    max = mean(Y_cont) + sqrt(3) * sd(Y_cont))
+  # Y <- ifelse(Y_cont > rep(threshold, N), 1, 0)
+  w <- alpha * Y + 0.3 * X + delta * u
+  data = data.frame(y = Y, x = X, w)
+  return(data)
+}
+
+generate_sample_brewer = function(data, w, n, rescale = FALSE) {
+  pik = inclusionprobabilities(w, n)
+  choosen = UPbrewer(pik)
+  samp = data[1:nrow(data) * choosen,] %>%
+    mutate(w = 1 / pik[1:nrow(data) * choosen])
+  if (rescale == TRUE) samp = mutate(samp, w_n = w / sum(w))
+  return(samp)
+}
+```
+
+```{r}
+N <- 3000
+n <- c(100, 200)
+sigma <- c(0.1, 0.2)
+alpha <- c(0.0, 0.2, 0.4, 0.6)
+delta <- c(1.5, 1.0)
+
+cases <- expand_grid(N, n, sigma, delta, alpha)
+
+m = 1
+pop = generate_data_study_glm(N = cases$N[m],
+                           sigma = cases$sigma[m],
+                           alpha = cases$alpha[m],
+                           delta = cases$delta[m])
+
+# Keeping all units to test out the test code
+samp = generate_sample_brewer(data = pop,
+                              w = pop$w, 
+                              n = 100, #cases$n[m], #nrow(pop) / 2,
+                              rescale = TRUE)
+```
+
+## Test
+
+```{r}
+glm_lr_test <- function(data, y, x, wts) {
+  
+}
+
+
+# This one works for glm() with no weights
+beta <- matrix(0,2,1)
+X <- cbind(1, samp$x)
+for(i in 1:25){
+  p <- exp(X %*% beta)/(1+exp(X %*% beta))
+  W <- diag(as.vector(p*(1-p)))
+  beta <- beta + solve(t(X) %*% W %*% X) %*% (t(X) %*% (samp$y - p))
+}
+beta
+
+reg = glm(y ~ x, data = samp, family = binomial(link = logit))
+reg$coefficients
+
+wei = glm(y ~ x, data = samp, family = binomial(link = logit), weights = w)
+wei$coefficients
+
+test_stat = 2 * (abs(logLik(wei) - logLik(reg)))
+df = df(wei) - df(reg) + 1
+pchisq(as.numeric(test_stat), df = 1, lower.tail = FALSE)
+
+reg$aic
+wei$aic
+
+reg$aic
+
+logLik(reg)
+
+design = svydesign(ids = ~1, weights = ~w, data = samp)
+hi = svyglm(y ~ x, design, family = binomial())
+hi$coefficients
+
+design1 = svydesign(ids = ~1, data = samp)
+bye = svyglm(y ~ x, design, family = binomial())
+bye$coefficients
+
+anova.svyglm(hi, bye)
+svygl
+
+hi$
+
+logLike(hi)
+
+logistic <- function(X, beta) {
+  p <- exp(X %*% beta)/(1+exp(X %*% beta))
+}
+
+Fisher_scoring <- function (X, y, m, beta_new, maxiter, delta.betas, wts) {
+  beta_old <- rep (Inf, length (beta_new))
+  diff.betas <- sqrt (sum ((beta_new - beta_old)^2))
+  iter <- 1
+  while ((iter<=maxiter) & (diff.betas>delta.betas)) {
+    iter <- iter + 1
+    beta_old <- beta_new
+    W <- diag(as.vector(m * logistic(X, beta_old)* (1-logistic(X, beta_new)))) # Trouble
+    mp <- m * logistic(X, beta_old)
+    XWX <- t(X) %*% W %*% X #+ diag(1, 58, 58) * 0.0001
+    Fscore <- t(X) %*% diag(wts) %*% (y-mp)
+    improvement <- solve(XWX, Fscore)
+    beta_new <- beta_old + improvement
+    diff.betas <- sqrt(sum((beta_new - beta_old)^2))
+  }
+  result <- list ()
+  result$beta.MLE <- beta_new
+  result$iterations <- iter - 1
+  return (result)
+}
+
+weighted = Fisher_scoring(X = cbind(1, samp$x), y = samp$y, m = 1, beta_new = reg$coefficients, maxiter = 1000, delta.betas = 0.0001, wts = samp$w_n)
+weighted$beta.MLE
+
+unweighted = Fisher_scoring(X = cbind(1, samp$x), y = samp$y, m = 1, beta_new = reg$coefficients, maxiter = 1000, delta.betas = 0.0001, wts = rep(sum(samp$w_n), length(samp$w_n)))
+unweighted$beta.MLE
+
+loglike <- function(y, x, wts, beta) {
+  y_hat <- cbind(1, x) %*% beta
+  sum(wts * (y * y_hat - log(1 + exp(y_hat))))
+}
+
+# Regular - MATCHES!
+ll_reduced = loglike(y = samp$y, x = samp$x, wts = rep(1, length(samp$w)), beta = reg$coefficients)
+ll_reduced
+
+# Weighted - 
+ll_full = loglike(y = samp$y, x = samp$x, wts = samp$w / length(samp$w), beta = hi$coefficients)
+ll_full
+
+p_value = pchisq(2 * (ll_full - ll_reduced), df = 1, lower.tail = FALSE)
+p_value
+
+
+
+
+
+```
+
+

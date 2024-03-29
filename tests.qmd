@@ -476,7 +476,7 @@ PN_test = function(data, y, x, wts, est_split = 0.5) {
   
   # Standard Z-test
   D = v_u^2 - v_w^2
-  Z = (mean(D) - 0) / (sd(D) / sqrt(length(y)))
+  Z = (mean(D) - 0) / (sd(D) / sqrt(length(D)))
   p_value = 2 * pnorm(abs(Z), lower.tail = FALSE)
   return(p_value)
 }
@@ -487,33 +487,6 @@ PN_test_new = function(data, y, x, wts, est_split = 0.5) {
 }
 PN_test_new(data = samp, y = samp$y, x = samp$x, wts = samp$w, est_split = 0.7)
 
-
-est_split = 0.7
-y = samp$y
-x = samp$x
-wts = samp$w
-data = samp
-index = sample(1:nrow(data), floor(est_split * length(x)))
-
-# Unweighted Regression
-X = cbind(1, x[index])
-betas_u = solve(t(X) %*% X) %*% t(X) %*% y[index]
-y_val_u = cbind(1, x[-index]) %*% betas_u
-v_u = y[-index] - y_val_u
-
-# Weighted Regression
-W = diag(wts[index])
-betas_w = solve(t(X) %*% W %*% X) %*% t(X) %*% W %*% y[index]
-y_val_w = cbind(1, x[-index]) %*% betas_w
-v_w = y[-index] - y_val_w
-
-# Standard Z-test
-D = v_u^2 - v_w^2
-Z = (mean(D) - 0) / (sd(D) / sqrt(length(D)))
-p_value = 2 * pnorm(abs(Z), lower.tail = FALSE)
-p_value
-
-t.test(D)
 ```
 
 
@@ -603,37 +576,40 @@ LR_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
 ### Confidence Intervals
 
 ```{r, eval = FALSE}
-confint_test = function(data, y, x, wts, alpha = 0.05) {
-  X = cbind(1, x)
-  
-  # Unweighted beta CI
-  betas_u = solve(t(X) %*% X) %*% t(X) %*% y
-  residuals_u = y - X %*% betas_u
-  MSE_u = sum(residuals_u^2) / (nrow(X) - ncol(X))
-  vcov_matrix_u = MSE_u * solve(t(X) %*% X)
-  se_u = sqrt(diag(vcov_matrix_u))
-  t_value = qt(1 - alpha / 2, df = nrow(X) - ncol(X))
-  CI_u = cbind(betas_u - t_value * se_u, betas_u + t_value * se_u)
-  beta_1_u = CI_u[2,]
-  
-  # Weighted beta CI
-  W = diag(wts)
-  betas_w = solve(t(X) %*% W %*% X) %*% t(X) %*% W %*% y
-  residuals_w = y - X %*% betas_w
-  MSE_w = sum(residuals_w^2) / (nrow(X) - ncol(X))
-  vcov_matrix_w = MSE_w * solve(t(X) %*% X)
-  se_w = sqrt(diag(vcov_matrix_w))
-  t_value = qt(1 - alpha / 2, df = nrow(X) - ncol(X))
-  CI_w = cbind(betas_w - t_value * se_w, betas_w + t_value * se_w)
-  beta_1_w = CI_w[2,]
-  
-  # Determine overlap
-  overlap = !(beta_1_w[2] < beta_1_u[1] | beta_1_u[2] < beta_1_w[1])
-  return(as.numeric(overlap)) # if overlap, returns 1 so fail to reject the null
-}
-
-confint_test(data = samp, y = samp$y, x = samp$x, wts = samp$w, alpha = 0.10)
+# confint_test = function(data, y, x, wts, alpha = 0.05) {
+#   X = cbind(1, x)
+#   
+#   # Unweighted beta CI
+#   betas_u = solve(t(X) %*% X) %*% t(X) %*% y
+#   residuals_u = y - X %*% betas_u
+#   MSE_u = sum(residuals_u^2) / (nrow(X) - ncol(X))
+#   vcov_matrix_u = MSE_u * solve(t(X) %*% X)
+#   se_u = sqrt(diag(vcov_matrix_u))
+#   t_value = qt(1 - alpha / 2, df = nrow(X) - ncol(X))
+#   CI_u = cbind(betas_u - t_value * se_u, betas_u + t_value * se_u)
+#   beta_1_u = CI_u[2,]
+#   
+#   # Weighted beta CI
+#   W = diag(wts)
+#   betas_w = solve(t(X) %*% W %*% X) %*% t(X) %*% W %*% y
+#   residuals_w = y - X %*% betas_w
+#   MSE_w = sum(residuals_w^2) / (nrow(X) - ncol(X))
+#   vcov_matrix_w = MSE_w * solve(t(X) %*% X)
+#   se_w = sqrt(diag(vcov_matrix_w))
+#   t_value = qt(1 - alpha / 2, df = nrow(X) - ncol(X))
+#   CI_w = cbind(betas_w - t_value * se_w, betas_w + t_value * se_w)
+#   beta_1_w = CI_w[2,]
+#   
+#   # Determine overlap
+#   overlap = !(beta_1_w[2] < beta_1_u[1] | beta_1_u[2] < beta_1_w[1])
+#   return(as.numeric(overlap)) # if overlap, returns 1 so fail to reject the null
+# }
+# 
+# confint_test(data = samp, y = samp$y, x = samp$x, wts = samp$w, alpha = 0.10)
 ```
+
+
+
 
 
 
