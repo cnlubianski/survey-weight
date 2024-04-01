@@ -602,3 +602,31 @@ reject_mini_table
 
 #write.csv(reject_mini_table, "perm_table_error.csv")
 ```
+
+
+```{r}
+data(api)
+
+install.packages("tidycensus") # https://walker-data.com/census-r/an-introduction-to-tidycensus.html
+library(tidycensus)
+
+get_decennial()
+key = "f08ae5b2480d381a612334b26aaff0b3e1927e61"
+census_api_key(key, overwrite = TRUE, install = TRUE)
+
+total_population_10 <- get_decennial(
+  geography = "state", 
+  variables = "P001001",
+  year = 2010
+)
+
+born_in_mexico <- get_acs(
+  geography = "state", 
+  variables = "B05006_150",
+  year = 2020
+)
+
+v16 <- load_variables(2016, "acs5", cache = TRUE)
+view(v16)
+```
+
