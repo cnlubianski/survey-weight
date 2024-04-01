@@ -19,7 +19,8 @@ if (!require(survey)) install.packages("survey"); library(survey)
 generate_data_study1_perm = function(N, sigma, alpha, delta) {
   X <- runif(N, 0, 1)
   u <- runif(N, 0, 1)
-  epsilon <- rnorm(N, 0, sd = sigma)
+  sigmas <- abs(rnorm(N, sigma, sigma / 3))
+  epsilon <- rnorm(N, 0, sd = sigmas)
   
   Y <- 1 + X + epsilon
   w <- alpha * Y + 0.3 * X + delta * u
@@ -27,31 +28,29 @@ generate_data_study1_perm = function(N, sigma, alpha, delta) {
   return(data)
 }
 
-generate_data_study2 = function(N, sigma, alpha) {
+generate_data_study2_perm = function(N, sigma = 0.2, delta = 1, alpha, distribution) {
   X <- runif(N, 0, 1)
   u <- runif(N, 0, 1)
-  epsilon <- rnorm(N, 0, sd = sigma)
+  sigmas <- abs(rnorm(N, sigma, sigma / 3))
   
-  Y <- 1 + X + epsilon
-  w <- alpha * (Y - 1.5 * alpha)^2 + 0.3 * X - 0.3 * X^2 + u
-  data = data.frame(y = Y, x = X, w)
-  return(data)
-}
-
-generate_data_study3 = function(N, alpha, psi) {
-  X <- rnorm(N, 0, sd = sqrt(0.5))
-  epsilon <- rnorm(N, 0, sd = sqrt(0.5))
-  z <- rnorm(N, 0, sd = sqrt(0.5))
-  beta = 2 - alpha
-  
-  eta = function(x) {
-    ifelse(x < 0.2, 0.025,
-               ifelse(0.2 <= x & x <= 1.2, 0.475 * (x - 0.2) + 0.025,
-               0.5))
+  epsilon <- NULL
+  if (distribution == "Normal") {
+    epsilon <- rnorm(N, 0, sd = sigmas)
+  } 
+  if (distribution == "Uniform") {
+    epsilon <- runif(N, min = -sqrt(3 * sigmas^2), max = sqrt(3 * sigmas^2))
+  } 
+  if (distribution == "Gamma") {
+    generated <- rgamma(N, shape = 10, scale = sqrt(sigmas^2 / 10))
+    epsilon <- generated - mean(generated)
+  } 
+  if (distribution == "t") {
+    scale = sqrt((sigmas^2 * 3) / 5)
+    epsilon <- scale * rt(N, df = 5)
   }
   
-  Y <- 0.5 + X + epsilon
-  w <- alpha * eta(X) + beta * eta(psi * epsilon + (1 - psi) * z)
+  Y <- 1 + X + epsilon
+  w <- alpha * Y + 0.3 * X + 1 * u
   data = data.frame(y = Y, x = X, w)
   return(data)
 }
@@ -61,33 +60,6 @@ generate_sample_brewer = function(data, w, n, rescale = FALSE) {
   choosen = UPbrewer(pik)
   samp = data[1:nrow(data) * choosen,] %>%
     mutate(w = 1 / pik[1:nrow(data) * choosen])
-  if (rescale == TRUE) mutate(samp, w = w / sum(w))
-  return(samp)
-}
-
-generate_sample_poisson = function(data, w, n, rescale = FALSE) {
-  choosen = as.numeric(runif(length(w), 0, (1 / n) * sum(w)) < w)
-  samp = cbind(data, choosen) %>%
-    filter(choosen == 1) %>%
-    select(-choosen) %>%
-    mutate(w = 1 / w) # Redefine from pi to weights w
-  if (rescale == TRUE) mutate(samp, w = w / sum(w))
-  return(samp)
-}
-
-generate_sample_poisson_suspicious = function(data, w, n, rescale = FALSE) {
-  choosen = as.numeric(runif(length(w), 0, (1 / n) * sum(w)) < w)
-  samp = cbind(data, choosen) %>%
-    filter(choosen == 1) %>%
-    select(-choosen)
-  if (rescale == TRUE) mutate(samp, w = w / sum(w))
-  return(samp)
-}
-
-generate_sample_brewer_suspicious = function(data, w, n, rescale = FALSE) {
-  pik = inclusionprobabilities(w, n)
-  choosen = UPbrewer(pik)
-  samp = data[1:nrow(data) * choosen,]
   if (rescale == TRUE) mutate(samp, w = w / sum(w))
   return(samp)
 }
@@ -111,23 +83,20 @@ pop = generate_data_study1_perm(N = cases$N[m],
 # Keeping all units to test out the test code
 samp = generate_sample_brewer(data = pop,
                               w = pop$w, 
-                              n = 1000, #cases$n[m], #nrow(pop) / 2,
-                              rescale = FALSE) #cases$n[m])
-
-#samp = pop %>%
-#  mutate(w = 1 / inclusionprobabilities(w, nrow(pop) / 2)) %>%
-#  sample_n(size = 1500)
+                              n = 1000, 
+                              rescale = FALSE) 
 ```
+
 
 ## Permutation 1: DC Test using HP variation
 
 ```{r}
-perm_HP <- function(y, x, wts, B = 1000) {
+perm_HP <- function(y, x, wts, B = 1000, replacement = FALSE) {
   stat_stor = rep(NA, B)
   X = cbind(1, x)
   
   for (b in 1:B) {
-    wts_b = sample(wts, replace = FALSE)
+    wts_b = sample(wts, replace = replacement)
     W = diag(wts_b)
     betas_u = solve(t(X) %*% X) %*% t(X) %*% y
     betas_w = solve(t(X) %*% W %*% X) %*% t(X) %*% W %*% y
@@ -153,12 +122,12 @@ perm_HP(y = samp$y, x = samp$x, wts = samp$w, B = 1000)
 ## Permutation 2: WA Test using DD variation
 
 ```{r}
-perm_DD <- function(y, x, wts, B = 1000) {
+perm_DD <- function(y, x, wts, B = 1000, replacement = FALSE) {
   stat_stor = rep(NA, B)
   X = cbind(1, x)
 
   for (b in 1:B) {
-    wts_b = sample(wts, replace = FALSE)
+    wts_b = sample(wts, replace = replacement)
     
     W = diag(wts_b)
     X_tilde = W %*% X
@@ -175,22 +144,23 @@ perm_DD <- function(y, x, wts, B = 1000) {
   
   p_o = mean(ifelse(stat_stor >= est_stat, 1, 0))
   p_value = 2 * min(p_o, 1 - p_o)
+  #return(list(p = p_value, stat = stat_stor, est = est_stat))
   return(p_value)
 }
 
-perm_DD(y = samp$y, x = samp$x, wts = samp$w, B = 1000)
+hi = perm_DD(y = samp$y, x = samp$x, wts = samp$w, B = 1000)
 ```
 
 
 ## Permutation 3: WA Test using correlations
 
-```{r}
-perm_PS1 <- function(y, x, wts, B = 1000) {
+```{r, fig.width=7.5, fig.height=5}
+perm_PS1 <- function(y, x, wts, B = 1000, replacement = FALSE) {
   stat_stor = rep(NA, B)
   X = cbind(1, x)
   
   for (b in 1:B) {
-    wts_b = sample(wts, replace = FALSE)
+    wts_b = sample(wts, replace = replacement)
     betas_u = solve(t(X) %*% X) %*% t(X) %*% y
     residuals = y - X %*% betas_u
     stat_stor[b] = cor(residuals, wts_b)
@@ -202,10 +172,29 @@ perm_PS1 <- function(y, x, wts, B = 1000) {
   
   p_o = mean(ifelse(stat_stor >= rep(est_stat, B), 1, 0))
   p_value = 2 * min(p_o, 1 - p_o)
+  #return(list(p = p_value, stat = stat_stor, est = est_stat))
   return(p_value)
 }
 
-perm_PS1(y = samp$y, x = samp$x, wts = samp$w, B = 1000)
+hi = perm_PS1(y = samp$y, x = samp$x, wts = samp$w, B = 10000)
+
+hi$p
+hist(hi$stat)
+abline(v = hi$est, col = "red")
+
+ggplot(data = data.frame(stats = hi$stat), aes(x = stats)) + 
+  geom_histogram(bins = 35, fill = "gray", color = "black") + 
+  geom_vline(xintercept = hi$est, color = "red", linetype = "dashed") +
+  scale_x_continuous(limits = c(-0.25, 0.25)) +
+  theme_hc() + 
+  labs(x = "Test Statistic", y = "")
+ggsave("pm_hist.png")
+
+ggplot(data = data.frame(stats = sigmas), aes(x = stats)) + 
+  geom_histogram(bins = 35, fill = "gray", color = "black") +
+  theme_hc() + 
+  labs(x = "heteroskedastic Residual Standard Deviations", y = "")
+ggsave("pm_sigmas.png")
 ```
 
 
@@ -217,12 +206,12 @@ RMSE = function(y, yhat){
   return(sqrt(SSE / length(y)))  
 }
 
-perm_RMSE <- function(y, x, wts, B = 1000) {
+perm_RMSE <- function(y, x, wts, B = 1000, replacement = FALSE) {
   stat_stor = rep(NA, B)
   X = cbind(1, x)
   
   for (b in 1:B) {
-    wts_b = sample(wts, replace = FALSE)
+    wts_b = sample(wts, replace = replacement)
     W = diag(wts_b)
     betas_u = solve(t(X) %*% X) %*% t(X) %*% y
     betas_w = solve(t(X) %*% W %*% X) %*% t(X) %*% W %*% y
@@ -248,12 +237,14 @@ perm_RMSE(y = samp$y, x = samp$x, wts = samp$w, B = 100)
 ## Permutation 5 - PN variation
 
 ```{r, warning = FALSE}
-perm_PN <- function(data, y, x, wts, B = 1000, est_split = 0.7) {
+perm_PN <- function(data, y, x, wts, B = 1000, est_split = 0.7, replacement = FALSE) {
   stat_stor = rep(NA, B)
   index = sample(1:nrow(data), floor(est_split * length(x)))
   
   for (b in 1:B) {
-    index_b = sample(1:nrow(data), floor(est_split * length(x)))
+    index_b = index
+    #index_b = sample(1:nrow(data), floor(est_split * length(x)))
+    wts_b = sample(wts[index_b], replace = replacement)
   
     # Unweighted Regression
     X = cbind(1, x[index_b])
@@ -262,7 +253,7 @@ perm_PN <- function(data, y, x, wts, B = 1000, est_split = 0.7) {
     v_u = y[-index_b] - y_val_u
       
     # Weighted Regression 
-    W = diag(wts[index_b])
+    W = diag(wts_b)
     betas_w = solve(t(X) %*% W %*% X) %*% t(X) %*% W %*% y[index_b]
     y_val_w = cbind(1, x[-index_b]) %*% betas_w
     v_w = y[-index_b] - y_val_w
@@ -284,22 +275,22 @@ perm_PN <- function(data, y, x, wts, B = 1000, est_split = 0.7) {
   est_stat = mean(v_u^2 - v_w^2)
   p_o = mean(ifelse(stat_stor >= rep(est_stat, B), 1, 0))
   p_value = 2 * min(p_o, 1 - p_o)
-  return(p_value)
+  return(list(p_value = p_value, stats = stat_stor, est_stat = est_stat))
 }
 
-perm_PN(data = samp, y = samp$y, x = samp$x, wts = samp$w, B = 1000)
+hi = perm_PN(data = samp, y = samp$y, x = samp$x, wts = samp$w, B = 1000)
 ```
 
 
-## Permutation 6 - Mean Ratio
+## Permutation 6 - PS2
 
 ```{r}
-perm_PS2 <- function(y, x, wts, B = 1000) {
+perm_PS2 <- function(y, x, wts, B = 1000, replacement = FALSE) {
   stat_stor = rep(NA, B)
   XY_design = cbind(1, x, y)
 
   for (b in 1:B) {
-    wts_b = sample(wts, replace = FALSE)
+    wts_b = sample(wts, replace = replacement)
     betas = solve(t(XY_design) %*% XY_design) %*% t(XY_design) %*% wts_b
     stat_stor[b] = betas[3]
   }
@@ -311,10 +302,54 @@ perm_PS2 <- function(y, x, wts, B = 1000) {
   return(p_value)
   #return(list(p = p_value, stat = stat_stor, est = est_stat))
 }
-hi = perm_PS2(y = samp$y, x = samp$x, wts = samp$w, B = 1000)
 
-hist(hi$stat)
-abline(v = hi$est)
+hi = perm_PS2(y = samp$y, x = samp$x, wts = samp$w, B = 1000)
+perm_PS2(y = samp$FINCBTAX, x = samp$TOTEXPCQ, wts = samp$wts, B = 1000)
+```
+
+## Permutation 7 - GREG
+
+```{r}
+perm_greg <- function(y, x_s, x_u, wts, B = 1000, replacement = FALSE) {
+  stat_stor = rep(NA, B)
+  X = cbind(1, x_s)
+  
+  for (b in 1:B) {
+    wts_b = sample(wts, replace = replacement)
+    betas = solve(t(X) %*% diag(wts_b) %*% X) %*% t(X) %*% diag(wts_b) %*% y
+    stat_stor[b] = sum(cbind(1, x_u) %*% betas)
+  }
+  
+  W = diag(wts)
+  betas = solve(t(X) %*% W %*% X) %*% t(X) %*% W %*% y
+  est_stat = sum(cbind(1, x_u) %*% betas)
+  p_o = mean(ifelse(stat_stor >= rep(est_stat, B), 1, 0))
+  p_value = 2 * min(p_o, 1 - p_o)
+  return(p_value)
+  #return(list(p_value = p_value, stats = stat_stor, est = est_stat, betas = betas))
+}
+
+perm_greg_new <- function(y, x_s, x_u, wts, B = 1000, replacement = FALSE) {
+  stat_stor = rep(NA, B)
+  X = cbind(1, x_s)
+  
+  for (b in 1:B) {
+    wts_b = sample(wts, replace = replacement)
+    betas = solve(t(X) %*% diag(wts_b) %*% X) %*% t(X) %*% diag(wts_b) %*% y
+    stat_stor[b] = sum(y * wts_b) + t(c(length(y), sum(x_u) - sum(x_s * wts_b))) %*% betas
+  }
+  
+  W = diag(wts)
+  betas = solve(t(X) %*% W %*% X) %*% t(X) %*% W %*% y
+  est_stat = sum(y * wts) + t(c(length(y), sum(x_u) - sum(x_s * wts))) %*% betas
+  p_o = mean(ifelse(stat_stor >= rep(est_stat, B), 1, 0))
+  p_value = 2 * min(p_o, 1 - p_o)
+  return(p_value)
+  #return(list(p_value = p_value, stats = stat_stor, est = est_stat, betas = betas))
+}
+
+hi = perm_greg(y = samp$y, x_s = samp$x, x_u = pop$x, wts = samp$w, B = 10000)
+bye = perm_greg_new(y = samp$y, x_s = samp$x, x_u = pop$x, wts = samp$w, B = 10000)
 ```
 
 
@@ -323,8 +358,7 @@ abline(v = hi$est)
 
 
 
-
-# Simulation
+# Simulation: Wang
 
 ```{r, message = FALSE, warning = FALSE}
 set.seed(51483464)
@@ -332,10 +366,85 @@ B = 1000
 
 N <- 3000
 n <- c(25, 50, 75, 100)
-sigma <- 0.1 #c(0.1, 0.2)
+sigma <- 0.2 #c(0.1, 0.2)
 alpha <- c(0, 0.2, 0.4, 0.6)
 delta <- 1 # c(1.5, 1)
 cases <- expand_grid(N, n, sigma, delta, alpha)
+
+columns = c("case", "iteration", "perm_HP", "HP", "perm_DD", "DD",
+            "perm_PS1", "PS1", "p_PS2", "PS2", "greg") ###
+mini_results = data.frame(matrix(nrow = 0, ncol = length(columns)))
+colnames(mini_results) = columns
+
+for (case in 1:nrow(cases)) {
+  p_HP = HP = p_DD = DD = p_PS1 = PS1 = p_PS2 = PS2 = greg = rep(NA, B) ###
+  case_storage = data.frame(iteration = seq_len(B), p_HP, HP, p_DD, DD, p_PS1, PS1, p_PS2, PS2, greg) ###
+  for (b in 1:B) {
+    pop = generate_data_study1_perm(N = cases$N[case], 
+                               sigma = cases$sigma[case],
+                               alpha = cases$alpha[case],
+                               delta = cases$delta[case])
+    samp = generate_sample_brewer(pop, w = pop$w, n = cases$n[case])
+    
+    case_storage$p_HP[b] = perm_HP(y = samp$y, x = samp$x, wts = samp$w, B = 1000, replacement = FALSE)
+    case_storage$HP[b] = HP_DC_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
+    case_storage$p_DD[b] = perm_DD(y = samp$y, x = samp$x, wts = samp$w, B = 1000, replacement = FALSE)
+    case_storage$DD[b] = DD_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
+    case_storage$p_PS1[b] = perm_PS1(y = samp$y, x = samp$x, wts = samp$w, B = 1000, replacement = FALSE)
+    case_storage$PS1[b] = PS1_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
+    case_storage$p_PS2[b] = perm_PS2(y = samp$y, x = samp$x, wts = samp$w, B = 1000, replacement = FALSE)
+    case_storage$PS2[b] = PS2_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
+    case_storage$greg[b] = perm_greg(y = samp$y, x_s = samp$x, x_u = pop$x, wts = samp$w, B = 1000, replacement = FALSE)
+  }
+  
+  mini_results = rbind(mini_results, cbind(case, case_storage))
+  print(case)
+}
+
+#write.csv(mini_results, "perm_sim.csv")
+```
+
+```{r}
+reject_mini = mini_results %>% ###
+  mutate(p_HP = case_when(p_HP <= 0.05 ~ 1, TRUE ~ 0),
+         HP = case_when(HP <= 0.05 ~ 1, TRUE ~ 0),
+         p_DD = case_when(p_DD <= 0.05 ~ 1, TRUE ~ 0),
+         DD = case_when(DD <= 0.05 ~ 1, TRUE ~ 0),
+         p_PS1 = case_when(p_PS1 <= 0.05 ~ 1, TRUE ~ 0),
+         PS1 = case_when(PS1 <= 0.05 ~ 1, TRUE ~ 0),
+         p_PS2 = case_when(p_PS2 <= 0.05 ~ 1, TRUE ~ 0),
+         PS2 = case_when(PS2 <= 0.05 ~ 1, TRUE ~ 0),
+         greg = case_when(greg <= 0.05 ~ 1, TRUE ~ 0)) %>%
+  select(-iteration) %>%
+  group_by(case) %>%
+  summarize(across(everything(), mean)) %>%
+  mutate(p_HP = format(round(p_HP * 100, 1), nsmall = 1),
+         HP = format(round(HP * 100, 1), nsmall = 1),
+         p_DD = format(round(p_DD * 100, 1), nsmall = 1),
+         DD = format(round(DD * 100, 1), nsmall = 1),
+         p_PS1 = format(round(p_PS1 * 100, 1), nsmall = 1),
+         PS1 = format(round(PS1 * 100, 1), nsmall = 1),
+         p_PS2 = format(round(p_PS2 * 100, 1), nsmall = 1),
+         PS2 = format(round(PS2 * 100, 1), nsmall = 1),
+         greg = format(round(greg * 100, 1), nsmall = 1))
+
+reject_mini_table = cbind(cases, reject_mini) %>% select(-c(N, case, delta))
+reject_mini_table
+
+#write.csv(reject_mini_table, "perm_table.csv")
+view(hi)
+```
+
+
+# Simulation: CE Data
+
+```{r, message = FALSE, warning = FALSE}
+set.seed(51483464)
+B = 100
+
+n <- c(50, 100, 150, 200)
+methods <- c("grouping", "pps", "stratify", "cluster", "twostage")
+cases <- expand_grid(methods, n)
 
 columns = c("case", "iteration", "perm_HP", "HP", "perm_DD", "DD",
             "perm_PS1", "PS1", "p_PS2", "PS2") ###
@@ -345,28 +454,45 @@ colnames(mini_results) = columns
 for (case in 1:nrow(cases)) {
   p_HP = HP = p_DD = DD = p_PS1 = PS1 = p_PS2 = PS2 = rep(NA, B) ###
   case_storage = data.frame(iteration = seq_len(B), p_HP, HP, p_DD, DD, p_PS1, PS1, p_PS2, PS2) ###
+  
   for (b in 1:B) {
-    pop = generate_data_study1_perm(N = cases$N[case], 
-                               sigma = cases$sigma[case],
-                               alpha = cases$alpha[case],
-                               delta = cases$delta[case])
-    samp = generate_sample_brewer(pop, w = pop$w, n = cases$n[case])
+    sampling = NULL
+    if (cases$methods[case] == "grouping") { # Bad
+      sampling = grouping(x = ce$TOTEXPCQ, n = cases$n[case], strata_prob = c(0.15, 0.2, 0.25, 0.4))
+    } 
+    if (cases$methods[case] == "pps") { # Decent - converges only with some tests
+      sampling = pps(x = ce$TOTEXPCQ, n = cases$n[case], noise_sd = 0.025)
+    } 
+    if (cases$methods[case] == "stratify") { # Good
+      sampling = stratify(stratum = ce$NO_EARNR, nh = round(cases$n[case] * c(0.4, 0.35, 0.15, 0.10)))
+    }
+    if (cases$methods[case] == "cluster") { # Good
+      #n = ifelse(cases$n[case] %in% c(50, 100), 2, 3) # Increase m per n
+      sampling = clustering(clusters = ce$INCOMEY, n = 3, m = cases$n[case] / 3)
+    }
+    if (cases$methods[case] == "twostage") { # Very good!
+      n = ifelse(cases$n[case] %in% c(50, 100), 2, 3) # Increase n_I per M
+      sampling = three_stage_clust_strat(clusters = ce$REGION, stratum = ce$MARITAL,
+                                         n = n, sample_size = cases$n[case])
+    }
+    samp = ce[1:nrow(ce) * sampling$sampled,] %>%
+      mutate(wts = 1 / sampling$pik[1:nrow(ce) * sampling$sampled])
     
-    case_storage$p_HP[b] = perm_HP(y = samp$y, x = samp$x, wts = samp$w, B = 1000)
-    case_storage$HP[b] = HP_DC_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
-    case_storage$p_DD[b] = perm_DD(y = samp$y, x = samp$x, wts = samp$w, B = 1000)
-    case_storage$DD[b] = DD_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
-    case_storage$p_PS1[b] = perm_PS1(y = samp$y, x = samp$x, wts = samp$w, B = 1000)
-    case_storage$PS1[b] = PS1_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
-    case_storage$p_PS2[b] = perm_PS2(y = samp$y, x = samp$x, wts = samp$w, B = 1000)
-    case_storage$PS2[b] = PS2_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
+    case_storage$p_HP[b] = perm_HP(y = samp$FINCBTAX, x = samp$TOTEXPCQ, wts = samp$wts, B = 1000)
+    case_storage$HP[b] = HP_DC_test(data = samp, y = samp$FINCBTAX, x = samp$TOTEXPCQ, wts = samp$wts)
+    case_storage$p_DD[b] = perm_DD(y = samp$FINCBTAX, x = samp$TOTEXPCQ, wts = samp$wts, B = 1000)
+    case_storage$DD[b] = DD_WA_test(data = samp, y = samp$FINCBTAX, x = samp$TOTEXPCQ, wts = samp$wts)
+    case_storage$p_PS1[b] = perm_PS1(y = samp$FINCBTAX, x = samp$TOTEXPCQ, wts = samp$wts, B = 1000)
+    case_storage$PS1[b] = PS1_WA_test(data = samp, y = samp$FINCBTAX, x = samp$TOTEXPCQ, wts = samp$wts)
+    case_storage$p_PS2[b] = perm_PS2(y = samp$FINCBTAX, x = samp$TOTEXPCQ, wts = samp$wts, B = 1000)
+    case_storage$PS2[b] = PS2_WA_test(data = samp, y = samp$FINCBTAX, x = samp$TOTEXPCQ, wts = samp$wts)
   }
   
   mini_results = rbind(mini_results, cbind(case, case_storage))
   print(case)
 }
 
-write.csv(mini_results, "perm_sim.csv")
+write.csv(mini_results, "perm_sim_ce.csv")
 ```
 
 ```{r}
@@ -391,82 +517,116 @@ reject_mini = mini_results %>% ###
          p_PS2 = format(round(p_PS2 * 100, 1), nsmall = 1),
          PS2 = format(round(PS2 * 100, 1), nsmall = 1))
 
-reject_mini_table = cbind(cases, reject_mini) %>% select(-c(N, case, delta))
+reject_mini_table = cbind(cases, reject_mini) %>% select(-c(case))
 reject_mini_table
 
-# write.csv(reject_mini_table, "perm_table.csv")
+write.csv(reject_mini_table, "perm_table_ce.csv")
 ```
 
 
-### Other 
-
+# Simulation: Error Distribution
 
 ```{r, message = FALSE, warning = FALSE}
 set.seed(51483464)
-B = 100
+B = 1000
 
 N <- 3000
-n <- c(25, 50, 100)
-sigma <- 0.15 #c(0.1, 0.2)
-alpha <- c(0, 0.3, 0.6)
-delta <- c(1)
-cases <- expand_grid(N, n, sigma, delta, alpha)
+distribution <- c("Normal", "Uniform", "Gamma", "t")
+n <- c(50, 100)
+alpha <- c(0, 0.2, 0.4, 0.6)
+cases <- expand_grid(N, distribution, n, alpha)
 
-columns = c("case", "iteration", "p_PS2", "PS2") ###
+columns = c("case", "iteration", "perm_HP", "HP", "perm_DD", "DD",
+            "perm_PS1", "PS1", "p_PS2", "PS2", "greg") ###
 mini_results = data.frame(matrix(nrow = 0, ncol = length(columns)))
 colnames(mini_results) = columns
 
 for (case in 1:nrow(cases)) {
-  p_PS2 = PS2 = rep(NA, B) ###
-  case_storage = data.frame(iteration = seq_len(B), p_PS2, PS2) ###
+  p_HP = HP = p_DD = DD = p_PS1 = PS1 = p_PS2 = PS2 = greg = rep(NA, B) ###
+  case_storage = data.frame(iteration = seq_len(B), p_HP, HP, p_DD, DD, p_PS1, PS1, p_PS2, PS2, greg) ###
   for (b in 1:B) {
-    pop = generate_data_study1_perm(N = cases$N[case], 
-                               sigma = cases$sigma[case],
-                               alpha = cases$alpha[case],
-                               delta = cases$delta[case])
+    pop = generate_data_study2_perm(N = cases$N[case], 
+                                    distribution = cases$distribution[case],
+                                    alpha = cases$alpha[case])
     samp = generate_sample_brewer(pop, w = pop$w, n = cases$n[case])
     
-    case_storage$p_PS2[b] = perm_PS2(y = samp$y, x = samp$x, wts = samp$w, B = 1000)
+    case_storage$p_HP[b] = perm_HP(y = samp$y, x = samp$x, wts = samp$w,
+                                   B = 1000, replacement = FALSE)
+    case_storage$HP[b] = HP_DC_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
+    case_storage$p_DD[b] = perm_DD(y = samp$y, x = samp$x, wts = samp$w,
+                                   B = 1000, replacement = FALSE)
+    case_storage$DD[b] = DD_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
+    case_storage$p_PS1[b] = perm_PS1(y = samp$y, x = samp$x, wts = samp$w,
+                                   B = 1000, replacement = FALSE)
+    case_storage$PS1[b] = PS1_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
+    case_storage$p_PS2[b] = perm_PS2(y = samp$y, x = samp$x, wts = samp$w,
+                                   B = 1000, replacement = FALSE)
     case_storage$PS2[b] = PS2_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
+    case_storage$greg[b] = perm_greg(y = samp$y, x_s = samp$x, x_u = pop$x, wts = samp$w,
+                                   B = 1000, replacement = FALSE)
   }
   
   mini_results = rbind(mini_results, cbind(case, case_storage))
-  print(case) 
+  print(case)
 }
 
+#write.csv(mini_results, "perm_sim_error.csv")
+```
+
+```{r}
 reject_mini = mini_results %>% ###
-  mutate(p_PS2 = case_when(p_PS2 <= 0.05 ~ 1, TRUE ~ 0),
-         PS2 = case_when(PS2 <= 0.05 ~ 1, TRUE ~ 0)) %>%
+  mutate(p_HP = case_when(p_HP <= 0.05 ~ 1, TRUE ~ 0),
+         HP = case_when(HP <= 0.05 ~ 1, TRUE ~ 0),
+         p_DD = case_when(p_DD <= 0.05 ~ 1, TRUE ~ 0),
+         DD = case_when(DD <= 0.05 ~ 1, TRUE ~ 0),
+         p_PS1 = case_when(p_PS1 <= 0.05 ~ 1, TRUE ~ 0),
+         PS1 = case_when(PS1 <= 0.05 ~ 1, TRUE ~ 0),
+         p_PS2 = case_when(p_PS2 <= 0.05 ~ 1, TRUE ~ 0),
+         PS2 = case_when(PS2 <= 0.05 ~ 1, TRUE ~ 0),
+         greg = case_when(greg <= 0.05 ~ 1, TRUE ~ 0)) %>%
   select(-iteration) %>%
   group_by(case) %>%
   summarize(across(everything(), mean)) %>%
-  mutate(p_PS2 = format(round(p_PS2 * 100, 1), nsmall = 1),
-         PS2 = format(round(PS2 * 100, 1), nsmall = 1))
+  mutate(p_HP = format(round(p_HP * 100, 1), nsmall = 1),
+         HP = format(round(HP * 100, 1), nsmall = 1),
+         p_DD = format(round(p_DD * 100, 1), nsmall = 1),
+         DD = format(round(DD * 100, 1), nsmall = 1),
+         p_PS1 = format(round(p_PS1 * 100, 1), nsmall = 1),
+         PS1 = format(round(PS1 * 100, 1), nsmall = 1),
+         p_PS2 = format(round(p_PS2 * 100, 1), nsmall = 1),
+         PS2 = format(round(PS2 * 100, 1), nsmall = 1),
+         greg = format(round(greg * 100, 1), nsmall = 1))
 
-reject_mini_table = cbind(cases, reject_mini) %>% select(-c(N, case, delta))
+reject_mini_table = cbind(cases, reject_mini) %>% select(-c(N, case))
 reject_mini_table
 
-#write.csv(reject_mini_table, "perm_sim.csv")
+#write.csv(reject_mini_table, "perm_table_error.csv")
 ```
 
 
+```{r}
+data(api)
 
+install.packages("tidycensus") # https://walker-data.com/census-r/an-introduction-to-tidycensus.html
+library(tidycensus)
 
+get_decennial()
+key = "f08ae5b2480d381a612334b26aaff0b3e1927e61"
+census_api_key(key, overwrite = TRUE, install = TRUE)
 
+total_population_10 <- get_decennial(
+  geography = "state", 
+  variables = "P001001",
+  year = 2010
+)
 
+born_in_mexico <- get_acs(
+  geography = "state", 
+  variables = "B05006_150",
+  year = 2020
+)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+v16 <- load_variables(2016, "acs5", cache = TRUE)
+view(v16)
+```
 

@@ -47,12 +47,12 @@ grouping <- function(x, n, strata_prob) {
   quantiles <- quantile(x, probs = seq(0, 1, 1 / N_h), na.rm = TRUE)
   groups <- cut(x, breaks = quantiles, labels = FALSE, include.lowest = TRUE)
   pik = inclusionprobastrata(strata = groups,
-                           nh = ceiling(sample_size * strata_prob))
+                           nh = ceiling(n * strata_prob))
   selected = UPbrewer(pik)
   return(list(pik = pik, sampled = selected))
 }
 
-sample_size = 100
+#sample_size = 100
 strata_prob = c(0.1, 0.15, 0.25, 0.5)
 
 hi = grouping(x = ce$FINCBTAX, n = sample_size, strata_prob = strata_prob)
@@ -98,7 +98,7 @@ pps <- function(x, n, noise_sd) {
   selected = UPbrewer(pik)
   return(list(pik = pik, sampled = selected))
 }
-welp = pps(x = exp(ce$TOTEXPCQ), n = 1000, noise_sd = 0.075)
+sampling = pps(x = exp(ce$TOTEXPCQ), n = 50, noise_sd = 0.025)
 ```
 
 ### Two-stage Stratification (STSRS) 
@@ -107,13 +107,14 @@ welp = pps(x = exp(ce$TOTEXPCQ), n = 1000, noise_sd = 0.075)
 stratify <- function(stratum, nh) {
   pik = inclusionprobastrata(as.numeric(stratum), nh)
   sampled <- rep(0, length(stratum))
-  for (s in levels(as.factor(stratum))) {
+  sampled[unlist(sapply(levels(as.factor(stratum)), function(s) {
     indices <- which(stratum == s)
-    selected <- UPbrewer(pik[indices])
-    sampled[indices * selected] <- 1
-  }
+    selected <- sample(indices, size = nh[as.numeric(s)], replace = FALSE)
+    return(selected)
+  }))] <- 1
   return(list(pik = pik, sampled = sampled))
 }
+
 welp = stratify(stratum = ce$REGION, nh = c(150, 150, 500, 200))
 ```
 
@@ -142,7 +143,6 @@ clustering <- function(clusters, n, m) {
 }
 
 hi = clustering(clusters = ce$INCOMEY, n = 2, m = 500 / 2)
-sum(hi$sampled)
 ```
 
 ### Three-stage Clustering - Stratified (CL-ST-SRS)
@@ -186,13 +186,11 @@ hi = three_stage_clust_strat(clusters = ce$REGION, stratum = ce$MARITAL,
 
 ```{r, message = FALSE, warning = FALSE}
 set.seed(51483464)
+B = 5000
+
 n <- c(50, 100, 250, 500, 1000)
 methods <- c("grouping", "pps", "stratify", "cluster", "twostage")
-
 cases <- expand_grid(methods, n)
-
-set.seed(51483464)
-B = 5000
 
 columns = c("case", "iteration", "DD", "PN", "HP", "PS1", "PS1q", "PS2", "PS2q", 
             "PS3", "WF", "LR")
@@ -478,4 +476,34 @@ ggsave("ce_weit.png")
 
 ```
 
+```{r}
+ggplot(samp, aes(x = TOTEXPCQ, y = FINCBTAX)) + 
+  geom_point(alpha = 0.15, aes(size = wts)) + 
+  geom_smooth(method = "lm", color = "darkblue") + 
+  geom_smooth(method = "lm", aes(weight = FINLWT21), color = "firebrick3") + 
+  theme_hc() +
+  labs(y = "Log of Total Consumer Income", x = "Log of Total Consumer Expenditure") + 
+  theme(legend.position = "none")
+ggsave("ce_visual.png")
+
+# Stratifying, n = 500, 
+HP_DC_test(data = samp, y = samp$FINCBTAX, x = samp$TOTEXPCQ, wts = samp$wts)
+DD_WA_test(data = samp, y = samp$FINCBTAX, x = samp$TOTEXPCQ, wts = samp$wts)
+PS1_WA_test(data = samp, y = samp$FINCBTAX, x = samp$TOTEXPCQ, wts = samp$wts)
+PS2_WA_test(data = samp, y = samp$FINCBTAX, x = samp$TOTEXPCQ, wts = samp$wts)
+PS3_test(data = samp, y = samp$FINCBTAX, x = samp$TOTEXPCQ, wts = samp$wts)
+WF_WA_test(data = samp, y = samp$FINCBTAX, x = samp$TOTEXPCQ, wts = samp$wts)
+PS1q_WA_test(data = samp, y = samp$FINCBTAX, x = samp$TOTEXPCQ, wts = samp$wts)
+PS2q_WA_test(data = samp, y = samp$FINCBTAX, x = samp$TOTEXPCQ, wts = samp$wts)
+
+mod1 = lm(FINCBTAX ~ TOTEXPCQ, samp)
+summary(mod1)
+
+design = svydesign(ids = ~1, weights = ~wts, data = samp)
+mod2 = svyglm(FINCBTAX ~ TOTEXPCQ, design = design)
+summary(mod2)
+
+confint(mod1)
+confint(mod2)
+```
 
