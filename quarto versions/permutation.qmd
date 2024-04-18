@@ -87,7 +87,6 @@ samp = generate_sample_brewer(data = pop,
                               rescale = FALSE) 
 ```
 
-
 ## Permutation 1: DC Test using HP variation
 
 ```{r}
@@ -117,7 +116,6 @@ perm_HP <- function(y, x, wts, B = 1000, replacement = FALSE) {
 
 perm_HP(y = samp$y, x = samp$x, wts = samp$w, B = 1000)
 ```
-
 
 ## Permutation 2: WA Test using DD variation
 
@@ -150,7 +148,6 @@ perm_DD <- function(y, x, wts, B = 1000, replacement = FALSE) {
 
 hi = perm_DD(y = samp$y, x = samp$x, wts = samp$w, B = 1000)
 ```
-
 
 ## Permutation 3: WA Test using correlations
 
@@ -197,7 +194,6 @@ ggplot(data = data.frame(stats = sigmas), aes(x = stats)) +
 ggsave("pm_sigmas.png")
 ```
 
-
 ## Permutation 4 - RMSE
 
 ```{r}
@@ -232,7 +228,6 @@ perm_RMSE <- function(y, x, wts, B = 1000, replacement = FALSE) {
 
 perm_RMSE(y = samp$y, x = samp$x, wts = samp$w, B = 100)
 ```
-
 
 ## Permutation 5 - PN variation
 
@@ -281,7 +276,6 @@ perm_PN <- function(data, y, x, wts, B = 1000, est_split = 0.7, replacement = FA
 hi = perm_PN(data = samp, y = samp$y, x = samp$x, wts = samp$w, B = 1000)
 ```
 
-
 ## Permutation 6 - PS2
 
 ```{r}
@@ -317,19 +311,26 @@ perm_greg <- function(y, x_s, x_u, wts, B = 1000, replacement = FALSE) {
   for (b in 1:B) {
     wts_b = sample(wts, replace = replacement)
     betas = solve(t(X) %*% diag(wts_b) %*% X) %*% t(X) %*% diag(wts_b) %*% y
-    stat_stor[b] = sum(cbind(1, x_u) %*% betas)
+    stat_stor[b] = sum(y * wts_b) + t(c(length(y), sum(x_u) - sum(x_s * wts_b))) %*% betas
   }
   
   W = diag(wts)
   betas = solve(t(X) %*% W %*% X) %*% t(X) %*% W %*% y
-  est_stat = sum(cbind(1, x_u) %*% betas)
+  est_stat = sum(y * wts) + t(c(length(y), sum(x_u) - sum(x_s * wts))) %*% betas
   p_o = mean(ifelse(stat_stor >= rep(est_stat, B), 1, 0))
   p_value = 2 * min(p_o, 1 - p_o)
   return(p_value)
   #return(list(p_value = p_value, stats = stat_stor, est = est_stat, betas = betas))
 }
 
-perm_greg_new <- function(y, x_s, x_u, wts, B = 1000, replacement = FALSE) {
+perm_greg_new(y = samp$y, x_s = samp$x, x_u = pop$x, wts = samp$w, B = 10000)
+```
+
+
+## Permutation 8 - Cov
+
+```{r}
+perm_greg <- function(y, x_s, x_u, wts, B = 1000, replacement = FALSE) {
   stat_stor = rep(NA, B)
   X = cbind(1, x_s)
   
@@ -348,9 +349,10 @@ perm_greg_new <- function(y, x_s, x_u, wts, B = 1000, replacement = FALSE) {
   #return(list(p_value = p_value, stats = stat_stor, est = est_stat, betas = betas))
 }
 
-hi = perm_greg(y = samp$y, x_s = samp$x, x_u = pop$x, wts = samp$w, B = 10000)
-bye = perm_greg_new(y = samp$y, x_s = samp$x, x_u = pop$x, wts = samp$w, B = 10000)
+perm_greg_new(y = samp$y, x_s = samp$x, x_u = pop$x, wts = samp$w, B = 10000)
 ```
+
+
 
 
 
@@ -434,7 +436,6 @@ reject_mini_table
 #write.csv(reject_mini_table, "perm_table.csv")
 view(hi)
 ```
-
 
 # Simulation: CE Data
 
@@ -522,7 +523,6 @@ reject_mini_table
 
 write.csv(reject_mini_table, "perm_table_ce.csv")
 ```
-
 
 # Simulation: Error Distribution
 

@@ -101,7 +101,7 @@ pps <- function(x, n, noise_sd) {
 sampling = pps(x = exp(ce$TOTEXPCQ), n = 50, noise_sd = 0.025)
 ```
 
-### Stratification (STSRS) 
+### Stratification (STSRS)
 
 ```{r}
 stratify <- function(stratum, nh) {
@@ -179,8 +179,6 @@ three_stage_clust_strat <- function(clusters, stratum, n, sample_size) {
 hi = three_stage_clust_strat(clusters = ce$REGION, stratum = ce$MARITAL,
                              n = 3, sample_size = 1000)
 ```
-
-
 
 ## CE Simulation
 
@@ -506,4 +504,10 @@ summary(mod2)
 confint(mod1)
 confint(mod2)
 ```
+
+
+
+
+
+
 

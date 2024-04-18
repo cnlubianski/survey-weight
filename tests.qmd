@@ -127,7 +127,6 @@ samp = generate_sample_brewer(data = pop,
 #  sample_n(size = 1500)
 ```
 
-
 # Difference-in-Coefficients Tests
 
 ### Hausman-Pfeffermann DC Test (adapted)
@@ -165,7 +164,6 @@ HP_DC_test = function(data, y, x, wts) {
 
 HP_DC_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
 ```
-
 
 # Weight Association Tests
 
@@ -279,8 +277,6 @@ PS1q_WA_test = function(data, y, x, wts) {
 PS1q_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
 ```
 
-
-
 ### Pfeffermann-Sverchkov WA Test 2 - Weight Informative
 
 Wang \textit{et al.} (2023) critiques the regression model $E(W \mid X, Y)$ since it would only capture a linear relationship between $W$ and $(X,Y)$. Thus, they suggest capturing possible non-linear relationships by considering $$E(W \mid X, Y) = f(X; \eta) + \sum_{k = 1}^2 Y^k \gamma_k,$$ where $f(X; \eta)$ is a function of $X$ with parameter $\eta$, coefficient $\gamma_k$ of $Y^k$. Finally, test the null hypothesis $H_0: \gamma_1 = \gamma_2 = 0$ with an $F$-test to determine whether $W$ and $Y$ are associated conditional on $X$.
@@ -343,10 +339,9 @@ PS2q_WA_test = function(data, y, x, wts) {
 PS2q_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
 ```
 
-
 ### Wu-Fuller WA Test
 
-As another special case of the Hausman (1978) misspecification regression test, Wu \& Fuller (2005) extend Dumouchel \& Duncan (1983) model but change how $X$ is transformed in the regression. Consider the regression $$Y = X \beta + \widetilde{X} \widetilde{\beta} + \widetilde{\varepsilon},$$ where $\widetilde{X} = QX$, $Q = \text{diag}(q_1, q_2, \hdots, q_n)$, and $q_i = w_i \hat{w}^{-1}(x_i)$ where $\hat{w}(x_i)$ is estimated from the regression of $w_i$ on $f(x_i)$. Testing the model with the null hypothesis $H_0: \gamma = 0$ determines the impact of $W$ on $Y$ after removing the information contained in $X$ as $q_i$ are the predictable factors of weight $W_i$ by $X_i$.
+As another special case of the Hausman (1978) misspecification regression test, Wu & Fuller (2005) extend Dumouchel & Duncan (1983) model but change how $X$ is transformed in the regression. Consider the regression $$Y = X \beta + \widetilde{X} \widetilde{\beta} + \widetilde{\varepsilon},$$ where $\widetilde{X} = QX$, $Q = \text{diag}(q_1, q_2, \hdots, q_n)$, and $q_i = w_i \hat{w}^{-1}(x_i)$ where $\hat{w}(x_i)$ is estimated from the regression of $w_i$ on $f(x_i)$. Testing the model with the null hypothesis $H_0: \gamma = 0$ determines the impact of $W$ on $Y$ after removing the information contained in $X$ as $q_i$ are the predictable factors of weight $W_i$ by $X_i$.
 
 ```{r}
 WF_WA_test = function(data, y, x, wts) {
@@ -384,12 +379,11 @@ WF_WA_test = function(data, y, x, wts) {
 WF_WA_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
 ```
 
-
 # Other
 
 ### Pfeffermann-Sverchkov Other Test - Estimating Equations
 
-Pfeffermann \& Sverchkov (2003) proposed a test that uses the estimating equations to estimate $\beta$ by an auxiliary regression model for $W$ on some function of $X$ with parameter $\eta$. The unweighted estimating function $$\delta_i(\beta) = X_i (Y_i - X_i^T \beta), i \in S.$$ Define $\hat{W}_i$ as the fitted value of the regression, $q_i = \frac{W_i}{\hat{W}_i}$, and $R(X_i; \beta) = \delta_i(\beta) - q_i \delta_i(\beta)$. Thus, the null hypothesis is $H_0: E(R(X_i; \beta)) = 0$. The sampling weight means $E(R(X_i; \beta))$ can be tested by a Hotelling statistic $$\frac{n - p}{p} \bar{R}_n^{-T} \hat{\Sigma}_{R,n}^{-1} \bar{R}_n,$$ where $\bar{R}_n$ is the sample mean and $\hat{\Sigma}_{R,n}$ is the sample variance matrix of $R(X_i; \hat{\beta}_u)$ with $i \in S$. The statistic then approximately follows an $F$ distribution with ($p, n - p$) degrees of freedom under the null hypothesis. 
+Pfeffermann & Sverchkov (2003) proposed a test that uses the estimating equations to estimate $\beta$ by an auxiliary regression model for $W$ on some function of $X$ with parameter $\eta$. The unweighted estimating function $$\delta_i(\beta) = X_i (Y_i - X_i^T \beta), i \in S.$$ Define $\hat{W}_i$ as the fitted value of the regression, $q_i = \frac{W_i}{\hat{W}_i}$, and $R(X_i; \beta) = \delta_i(\beta) - q_i \delta_i(\beta)$. Thus, the null hypothesis is $H_0: E(R(X_i; \beta)) = 0$. The sampling weight means $E(R(X_i; \beta))$ can be tested by a Hotelling statistic $$\frac{n - p}{p} \bar{R}_n^{-T} \hat{\Sigma}_{R,n}^{-1} \bar{R}_n,$$ where $\bar{R}_n$ is the sample mean and $\hat{\Sigma}_{R,n}$ is the sample variance matrix of $R(X_i; \hat{\beta}_u)$ with $i \in S$. The statistic then approximately follows an $F$ distribution with ($p, n - p$) degrees of freedom under the null hypothesis.
 
 ```{r}
 PS3_test = function(data, y, x, wts) {
@@ -455,7 +449,6 @@ PS3q_test = function(data, y, x, wts) {
 PS3q_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
 ```
 
-
 ### Pfeffermann-Nathan Predictive Power Test
 
 ```{r}
@@ -489,17 +482,11 @@ PN_test_new(data = samp, y = samp$y, x = samp$x, wts = samp$w, est_split = 0.7)
 
 ```
 
-
-
-
-
-
 ```{r}
 ####################################3
 
 #For determining when each test performs well, do a heatmap and facit by extreme case
 ```
-
 
 ### Breidt Likelihood-Ratio Test
 
@@ -572,7 +559,6 @@ LR_test = function(data, y, x, wts) {
 LR_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
 ```
 
-
 ### Confidence Intervals
 
 ```{r, eval = FALSE}
@@ -608,15 +594,7 @@ LR_test(data = samp, y = samp$y, x = samp$x, wts = samp$w)
 # confint_test(data = samp, y = samp$y, x = samp$x, wts = samp$w, alpha = 0.10)
 ```
 
-
-
-
-
-
-
-
-
-# Simulation 
+# Simulation
 
 ### Study 1
 
@@ -786,68 +764,6 @@ reject_table
 write.csv(reject_table, "recent_sim2_large.csv")
 ```
 
-```{r}
-heatmap_data = results %>%
-  mutate(HP = case_when(HP <= 0.05 ~ 1, TRUE ~ 0),
-         DD = case_when(DD <= 0.05 ~ 1, TRUE ~ 0),
-         PS1 = case_when(PS1 <= 0.05 ~ 1, TRUE ~ 0),
-         PS1q = case_when(PS1q <= 0.05 ~ 1, TRUE ~ 0),
-         PS2 = case_when(PS2 <= 0.05 ~ 1, TRUE ~ 0),
-         PS2q = case_when(PS2q <= 0.05 ~ 1, TRUE ~ 0),
-         PS3 = case_when(PS3 <= 0.05 ~ 1, TRUE ~ 0),
-         WF = case_when(WF <= 0.05 ~ 1, TRUE ~ 0),
-         LR = case_when(LR <= 0.05 ~ 1, TRUE ~ 0),
-         PN = case_when(PN <= 0.05 ~ 1, TRUE ~ 0)) %>%
-  cbind(., cases) %>%
-  filter(n %in% c(100,200), alpha %in% c(0.5, 1.0)) %>%
-  select(-c(X, case, PS3q, iteration, LR, PN, N, sigma)) #%>%
-  #melt(id.vars = "iteration")
-
-
-help = results %>%
-  mutate(HP = case_when(HP <= 0.05 ~ 1, TRUE ~ 0),
-         DD = case_when(DD <= 0.05 ~ 1, TRUE ~ 0),
-         PS1 = case_when(PS1 <= 0.05 ~ 1, TRUE ~ 0),
-         PS1q = case_when(PS1q <= 0.05 ~ 1, TRUE ~ 0),
-         PS2 = case_when(PS2 <= 0.05 ~ 1, TRUE ~ 0),
-         PS2q = case_when(PS2q <= 0.05 ~ 1, TRUE ~ 0),
-         PS3 = case_when(PS3 <= 0.05 ~ 1, TRUE ~ 0),
-         WF = case_when(WF <= 0.05 ~ 1, TRUE ~ 0),
-         LR = case_when(LR <= 0.05 ~ 1, TRUE ~ 0),
-         PN = case_when(PN <= 0.05 ~ 1, TRUE ~ 0)) %>%
-  filter(case %in% c(2,3,6,7)) %>%
-  select(-c(X, PS3q, iteration, LR, PN))
-
-
-head(heatmap_data)
-
-hi = cor(heatmap_data)
-
-why = rbind(cor(filter(help, case == 2) %>% select(-case)),
-      cor(filter(help, case == 3) %>% select(-case)),
-      cor(filter(help, case == 6) %>% select(-case)),
-      cor(filter(help, case == 7) %>% select(-case)))
-
-
-case4 = cbind(as.data.frame(as.table(cor(filter(help, case == 7) %>% select(-case)))),
-              )
-
-
-library(reshape)
-
-ggplot(data = as.data.frame(as.table(cor(heatmap_data)))) + 
-  geom_tile(aes(x = Var1, y = Var2, fill = Freq)) +
-    scale_fill_gradient(low = "white", high = "black")
-
-
-
-heatmap(hi,
-        col = colorRampPalette(c("blue", "white", "red"))(100),
-        main = "Correlation Heatmap",
-        xlab = "Variables",
-        ylab = "Variables")
-```
-
 
 ### Study 3
 
@@ -1012,7 +928,6 @@ reject_table
 write.csv(reject_table, "suspicious_sim2.csv")
 ```
 
-
 ### Study 3
 
 ```{r}
@@ -1091,9 +1006,6 @@ reject_table
 
 write.csv(reject_table, "suspicious_sim3.csv")
 ```
-
-
-
 
 # Mini-Simulation Studies
 
@@ -1245,5 +1157,105 @@ reject_hp_var = hp_var %>%
   select(-iteration) %>%
   group_by(case) %>%
   summarize(negative_rate = mean(HP_DC))
+
+```
+
+### Correlation Heatmap
+
+```{r}
+library(ggplot2)
+library(reshape2)
+library(plyr)
+library(scales)
+library(ggthemes)
+
+sim1 = read.csv("Datasets/st1_results_large.csv") %>%
+  select(-c(LR, PN, PS3q, X, iteration)) %>%
+  mutate(HP = case_when(HP <= 0.05 ~ 1, TRUE ~ 0),
+         DD = case_when(DD <= 0.05 ~ 1, TRUE ~ 0),
+         PS1 = case_when(PS1 <= 0.05 ~ 1, TRUE ~ 0),
+         PS1q = case_when(PS1q <= 0.05 ~ 1, TRUE ~ 0),
+         PS2 = case_when(PS2 <= 0.05 ~ 1, TRUE ~ 0),
+         PS2q = case_when(PS2q <= 0.05 ~ 1, TRUE ~ 0),
+         PS3 = case_when(PS3 <= 0.05 ~ 1, TRUE ~ 0),
+         WF = case_when(WF <= 0.05 ~ 1, TRUE ~ 0))
+
+sim_x = filter(sim1, case == 32) %>% select(-case) 
+
+cor_raw = cor(sim_x)
+rownames(cor_raw) = colnames(cor_raw) = colnames(sim_x)
+cor_data <- melt(cor_raw)
+
+ggplot(cor_data, aes(Var1, Var2, fill = value)) +
+  scale_fill_gradient(low = "white", high = "red") +
+  geom_tile(color = "black") +
+  geom_text(aes(label = round(value, 3)), color = "black", size = 4) + 
+  labs(title = "Simulation 1 Correlation across Diagnostic Tests") +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        legend.position = "none", 
+        axis.ticks = element_blank(),
+        axis.line = element_blank())
+```
+
+
+```{r}
+sim2 = read.csv("Datasets/ce_results.csv") %>%
+  select(-c(LR, PN, X, iteration)) %>%
+  mutate(HP = case_when(HP <= 0.05 ~ 1, TRUE ~ 0),
+         DD = case_when(DD <= 0.05 ~ 1, TRUE ~ 0),
+         PS1 = case_when(PS1 <= 0.05 ~ 1, TRUE ~ 0),
+         PS1q = case_when(PS1q <= 0.05 ~ 1, TRUE ~ 0),
+         PS2 = case_when(PS2 <= 0.05 ~ 1, TRUE ~ 0),
+         PS2q = case_when(PS2q <= 0.05 ~ 1, TRUE ~ 0),
+         PS3 = case_when(PS3 <= 0.05 ~ 1, TRUE ~ 0),
+         WF = case_when(WF <= 0.05 ~ 1, TRUE ~ 0))
+
+sim2x = filter(sim2, case == 18) %>% select(-case) 
+
+cor_raw = cor(sim2x)
+rownames(cor_raw) = colnames(cor_raw) = colnames(cor_raw)
+cor_data <- melt(cor_raw)
+
+ggplot(cor_data, aes(Var1, Var2, fill = value)) +
+  scale_fill_gradient(low = "white", high = "red") +
+  geom_tile(color = "black") +
+  geom_text(aes(label = round(value, 3)), color = "black", size = 4) + 
+  labs(title = "Simulation 2 Correlation across Diagnostic Tests with Stratification") +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        legend.position = "none", 
+        axis.ticks = element_blank(),
+        axis.line = element_blank())
+```
+
+```{r}
+sim3 = read.csv("Datasets/perm_sim_error.csv") %>%
+  select(-c(X, iteration, greg)) %>%
+  mutate(HP = case_when(HP <= 0.05 ~ 1, TRUE ~ 0),
+         DD = case_when(DD <= 0.05 ~ 1, TRUE ~ 0),
+         p_HP = case_when(p_HP <= 0.05 ~ 1, TRUE ~ 0),
+         p_DD = case_when(p_DD <= 0.05 ~ 1, TRUE ~ 0),
+         p_PS1 = case_when(p_PS1 <= 0.05 ~ 1, TRUE ~ 0),
+         PS1 = case_when(PS1 <= 0.05 ~ 1, TRUE ~ 0),
+         p_PS2 = case_when(p_PS2 <= 0.05 ~ 1, TRUE ~ 0),
+         PS2 = case_when(PS2 <= 0.05 ~ 1, TRUE ~ 0))
+
+sim3x = filter(sim3, case == 28) %>% select(-case) 
+
+cor_raw = cor(sim3x)
+rownames(cor_raw) = colnames(cor_raw) = colnames(cor_raw)
+cor_data <- melt(cor_raw)
+
+ggplot(cor_data, aes(Var1, Var2, fill = value)) +
+  scale_fill_gradient(low = "white", high = "red") +
+  geom_tile(color = "black") +
+  geom_text(aes(label = round(value, 3)), color = "black", size = 4) + 
+  labs(title = "Simulation 3 Correlation across Diagnostic Tests") +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        legend.position = "none", 
+        axis.ticks = element_blank(),
+        axis.line = element_blank())
 ```
 
