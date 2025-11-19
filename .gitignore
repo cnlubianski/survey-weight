@@ -2,3 +2,5 @@
 .Rhistory
 .RData
 .Ruserdata
+.renvignore
+output/old-datasets/
